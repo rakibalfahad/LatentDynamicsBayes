@@ -1,0 +1,29 @@
+{
+    "model": {
+        "n_features": 3,
+        "max_states": 20,
+        "alpha": 1.0,
+        "gamma": 1.0,
+        "learning_rate": 0.01
+    },
+    "data": {
+        "window_size": 100,
+        "sample_interval": 1.0,
+        "use_real_metrics": false
+    },
+    "training": {
+        "max_iterations": 1000,
+        "save_interval": 10,
+        "checkpoint_interval": 100
+    },
+    "visualization": {
+        "interactive": true,
+        "save_plots": true,
+        "save_interval": 20,
+        "feature_names": ["CPU", "Memory", "Disk"]
+    },
+    "paths": {
+        "model_dir": "models",
+        "plot_dir": "plots"
+    }
+}
