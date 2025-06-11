@@ -17,8 +17,16 @@ class LiveVisualizer:
         self.fig, self.axes = plt.subplots(n_features + 1, 1, figsize=(12, 8))
         plt.ion()  # Enable interactive mode
     
-    def update_plot(self, data, states, trans_probs, loss):
-        """Update live plot with new data."""
+    def update_plot(self, data, states, trans_probs, loss, losses):
+        """Update live plot with new data.
+        
+        Args:
+            data: Tensor of shape (window_size, n_features)
+            states: Inferred states
+            trans_probs: Transition probabilities
+            loss: Current loss value
+            losses: List of all loss values
+        """
         self.fig.clear()
         data = data.cpu().numpy()
         states = states.cpu().numpy()
@@ -33,10 +41,11 @@ class LiveVisualizer:
         
         # Plot loss
         ax = self.fig.add_subplot(self.n_features + 1, 1, self.n_features + 1)
-        ax.plot(self.window_size + np.arange(len(self.losses)), self.losses)
+        ax.plot(np.arange(len(losses)), losses, label='Loss')
         ax.set_title(f'Loss: {loss:.4f}')
-        ax.set_xlabel('Time')
+        ax.set_xlabel('Window')
         ax.set_ylabel('Loss')
+        ax.legend()
         
         self.fig.tight_layout()
         plt.pause(0.01)

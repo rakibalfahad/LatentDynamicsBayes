@@ -48,32 +48,33 @@ class HDPHMM(nn.Module):
             log_likelihood: Log likelihood of observations
         """
         T = observations.shape[0]
-        beta_weights = self.stick_breaking(self.beta_logits)
-        trans_probs = torch.softmax(self.pi_logits, dim=1)
+        beta_weights = self.stick_breaking(self.beta_logits).clone()  # Clone to avoid inplace
+        trans_probs = torch.softmax(self.pi_logits, dim=1).clone()  # Clone to avoid inplace
         
         # Emission probabilities (Gaussian)
         emission_probs = torch.stack([
             dist.MultivariateNormal(
                 self.means[k],
-                covariance_matrix=torch.diag(torch.exp(self.log_vars[k]))
+                covariance_matrix=torch.diag(torch.exp(self.log_vars[k]) + 1e-6)
             ).log_prob(observations)
             for k in range(self.max_states)
-        ]).t()
+        ], dim=1).clone()  # Shape: (T, max_states)
         
         # Forward pass
         alpha = torch.zeros(T, self.max_states, device=self.device)
-        alpha[0] = beta_weights * torch.exp(emission_probs[0])
-        alpha[0] /= alpha[0].sum() + 1e-10
+        alpha_t = (beta_weights * torch.exp(emission_probs[0])).clone()
+        alpha[0] = alpha_t / (alpha_t.sum() + 1e-10)  # New tensor
         
         for t in range(1, T):
-            alpha[t] = torch.matmul(alpha[t-1], trans_probs) * torch.exp(emission_probs[t])
-            alpha[t] /= alpha[t].sum() + 1e-10
+            matmul_result = torch.matmul(alpha[t-1].clone(), trans_probs)  # Clone input
+            alpha_t = (matmul_result * torch.exp(emission_probs[t])).clone()
+            alpha[t] = alpha_t / (alpha_t.sum() + 1e-10)  # New tensor
         
         # Backward pass
         beta = torch.ones(T, self.max_states, device=self.device)
         for t in range(T-2, -1, -1):
-            beta[t] = torch.matmul(trans_probs, (beta[t+1] * torch.exp(emission_probs[t+1])))
-            beta[t] /= beta[t].sum() + 1e-10
+            beta_t = torch.matmul(trans_probs, (beta[t+1].clone() * torch.exp(emission_probs[t+1]))).clone()
+            beta[t] = beta_t / (beta_t.sum() + 1e-10)  # New tensor
         
         # Log likelihood
         log_likelihood = torch.log(alpha[-1].sum() + 1e-10)
@@ -83,16 +84,16 @@ class HDPHMM(nn.Module):
     def infer_states(self, observations):
         """Infer most likely states using Viterbi algorithm."""
         T = observations.shape[0]
-        beta_weights = self.stick_breaking(self.beta_logits)
-        trans_probs = torch.softmax(self.pi_logits, dim=1)
+        beta_weights = self.stick_breaking(self.beta_logits).clone()
+        trans_probs = torch.softmax(self.pi_logits, dim=1).clone()
         
         emission_probs = torch.stack([
             dist.MultivariateNormal(
                 self.means[k],
-                covariance_matrix=torch.diag(torch.exp(self.log_vars[k]))
+                covariance_matrix=torch.diag(torch.exp(self.log_vars[k]) + 1e-6)
             ).log_prob(observations)
             for k in range(self.max_states)
-        ]).t()
+        ], dim=1).clone()
         
         viterbi = torch.zeros(T, self.max_states, device=self.device)
         ptr = torch.zeros(T, self.max_states, dtype=torch.long, device=self.device)
@@ -101,7 +102,7 @@ class HDPHMM(nn.Module):
         for t in range(1, T):
             trans = viterbi[t-1].unsqueeze(1) + torch.log(trans_probs + 1e-10)
             viterbi[t], ptr[t] = torch.max(trans, dim=0)
-            viterbi[t] += emission_probs[t]
+            viterbi[t] = viterbi[t] + emission_probs[t]
         
         states = torch.zeros(T, dtype=torch.long, device=self.device)
         states[-1] = torch.argmax(viterbi[-1])

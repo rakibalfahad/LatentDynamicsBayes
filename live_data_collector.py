@@ -27,9 +27,11 @@ class LiveDataCollector:
     def get_sample(self):
         """Simulate a single sample of system metrics."""
         # In practice, replace with psutil calls, e.g.:
+        # import psutil
         # cpu = psutil.cpu_percent()
         # ram = psutil.virtual_memory().percent
         # temp = psutil.sensors_temperatures()['coretemp'][0].current
+        # return torch.tensor([cpu, temp, ram], device=self.device)
         probs = self.sim_trans[self.current_state]
         self.current_state = torch.multinomial(probs, 1).item()
         sample = torch.distributions.MultivariateNormal(
@@ -43,8 +45,10 @@ class LiveDataCollector:
         if len(self.buffer) >= self.window_size:
             self.buffer.pop(0)
         sample = self.get_sample()
-        self.buffer.append(sample)
+        self.buffer.append(sample.cpu().numpy())  # Store as NumPy for efficiency
         
         if len(self.buffer) == self.window_size:
-            return torch.stack(self.buffer)
+            # Convert buffer to a single NumPy array, then to tensor
+            buffer_array = np.array(self.buffer)
+            return torch.from_numpy(buffer_array).to(self.device)
         return None

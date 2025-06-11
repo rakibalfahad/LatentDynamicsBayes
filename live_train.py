@@ -21,13 +21,14 @@ class LiveHDPHMM:
     
     def update_model(self, window_data):
         """Update model with a new window of data."""
-        self.optimizer.zero_grad()
-        _, _, log_likelihood = self.model.forward_backward(window_data)
-        loss = -log_likelihood
-        loss.backward()
-        self.optimizer.step()
-        self.losses.append(loss.item())
-        return loss.item()
+        with torch.autograd.set_detect_anomaly(True):  # Enable anomaly detection
+            self.optimizer.zero_grad()
+            _, _, log_likelihood = self.model.forward_backward(window_data)
+            loss = -log_likelihood
+            loss.backward()
+            self.optimizer.step()
+            self.losses.append(loss.item())
+            return loss.item()
     
     def infer(self, window_data):
         """Perform inference on a window of data."""
