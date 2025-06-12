@@ -322,6 +322,100 @@ The Hierarchical Dirichlet Process Hidden Markov Model (HDP-HMM) is a Bayesian n
 - **Posterior predictive**: Provides forecasting capability for future observations
 - **GPU acceleration**: All tensor operations are GPU-compatible for faster training and inference
 
+## Dynamic State Management with Birth, Merge, and Delete Mechanisms
+
+The HDP-HMM implementation includes dynamic state management mechanisms that allow the model to adaptively adjust the number of states based on data evidence. These mechanisms help maintain model complexity that best fits the data without unnecessary computational overhead.
+
+### Theoretical Background
+
+While traditional HDP-HMM relies solely on Bayesian nonparametric priors to determine the state space, explicit birth, merge, and delete mechanisms provide additional control over model complexity during inference:
+
+1. **Birth**: Creates new states when the model detects regions of observations that are poorly explained by existing states
+2. **Merge**: Combines states with similar emission distributions to reduce redundancy
+3. **Delete**: Removes states with negligible probability mass to improve computational efficiency
+
+These mechanisms are inspired by the "split-merge" and "birth-death" MCMC algorithms in Bayesian nonparametrics, but adapted for online variational inference settings.
+
+### Implementation Details
+
+The dynamic state management is implemented in the `update_states` method of the `HDPHMM` class:
+
+- **Delete**: States with beta weights below a threshold (default: 1e-3) are marked as inactive
+- **Merge**: States with means closer than a threshold (default: 0.5 in normalized space) are combined by weighted averaging
+- **Birth**: When model fit is poor (high negative log-likelihood), a new state is initialized using observations that are poorly explained
+
+### State Evolution Visualization
+
+The implementation includes comprehensive state tracking and visualization tools to monitor how these mechanisms affect model complexity:
+
+1. **Real-time Console Output**: 
+   - Detailed information about state updates during training
+   - Clear display of birth, merge, and delete events with affected state IDs
+   - Statistics on state counts and changes
+
+2. **State Evolution Timeline**:
+   - Text-based visualization showing state evolution across training windows
+   - Symbols indicate active states (●), births (⊕), merges (⊙), and deletions (⊗)
+   - Helps identify patterns in how states are created, merged, and deleted
+
+3. **State Evolution Summary**:
+   - Detailed final report on all state changes during training
+   - Counts of birth, merge, and delete events by state ID
+   - Identifies which states were most frequently created, merged, or deleted
+
+This enhanced state tracking helps debug model behavior and fine-tune hyperparameters for optimal state management.
+
+#### Birth Mechanism
+
+The birth mechanism monitors the average negative log-likelihood of observations and creates new states when the model fit is poor:
+
+- **When**: When the average negative log-likelihood exceeds a threshold and the current number of states is below the maximum
+- **How**: A new state is initialized using the mean and variance of poorly fit observations
+- **Why**: Improves model flexibility by adding states where needed
+
+#### Merge Mechanism
+
+The merge mechanism identifies and combines states with similar emission distributions:
+
+- **When**: When two states have emission means closer than a specified distance threshold
+- **How**: Parameters are combined through weighted averaging based on state probabilities
+- **Why**: Reduces redundancy and prevents unnecessary state proliferation
+
+#### Delete Mechanism
+
+The delete mechanism removes states with negligible probability:
+
+- **When**: When a state's beta weight falls below a specified threshold
+- **How**: The state is marked inactive and its parameters are no longer updated
+- **Why**: Improves computational efficiency by focusing on meaningful states
+
+### Tuning Parameters
+
+The behavior of these mechanisms can be adjusted through the following parameters:
+
+| Parameter | Default | Description | Effect of Increasing | Effect of Decreasing |
+|-----------|---------|-------------|---------------------|----------------------|
+| `delete_threshold` | 1e-3 | Minimum beta weight for a state to remain active | More aggressive state pruning, fewer active states | Less pruning, more states preserved |
+| `merge_distance` | 0.5 | Maximum Euclidean distance between means for state merging | More aggressive merging, fewer distinct states | Less merging, more distinct states |
+| `birth_threshold` | 10.0 | Negative log-likelihood threshold for creating new states | Fewer new states created | More new states created |
+
+### Monitoring State Dynamics
+
+The implementation includes visualization of state counts over time, allowing you to monitor how these mechanisms affect model complexity:
+
+- A dedicated plot shows the number of active states over time
+- Logs report the current number of active states periodically
+- The transition probability heatmap adjusts to show only active states
+
+### Tuning Recommendations
+
+- **High Noise Data**: Increase `delete_threshold` (e.g., 5e-3) and `merge_distance` (e.g., 1.0) to prevent noise from creating spurious states
+- **Complex Systems**: Decrease `birth_threshold` (e.g., 5.0) to allow more states to capture complex patterns
+- **Computational Efficiency**: Increase `delete_threshold` and `birth_threshold` to maintain fewer states
+- **High Precision**: Decrease `merge_distance` (e.g., 0.3) to prevent merging of potentially distinct states
+
+These mechanisms work together to maintain an optimal number of states that balances model complexity with computational efficiency. By properly tuning these parameters, you can ensure the model adapts appropriately to your specific data characteristics.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -388,6 +482,102 @@ def detect_anomalies(self, window_data, states, trans_probs):
         "unlikely_observation_indices": unlikely_obs
     }
 ```
+
+### Tile Visualization
+
+In addition to the real-time plots of time series data with state assignments, the system also generates state tile visualizations inspired by the bnpy visualization module:
+
+- **State Tiles**: Shows state assignments over time as a color-coded tile grid
+  - Each row represents a time point within a window
+  - Each column represents a different window
+  - Colors represent different state assignments
+  - Helps visualize state persistence and transitions over time
+
+- **Transition Matrix**: Below the tiles, a heatmap shows the normalized transition probabilities between states
+  - Darker colors indicate more frequent transitions
+  - Annotations show the probability values
+  - Only counts actual transitions (when state changes)
+
+These visualizations are automatically saved to the `plots/` directory every 5 windows as `state_tiles_window_X.png` where X is the window number.
+
+The tile visualization is particularly useful for:
+
+- Identifying state persistence patterns
+- Detecting unusual state transitions
+- Visualizing the effects of the birth, merge, and delete mechanisms on state assignments
+- Tracking how state assignments evolve over longer time periods
+
+![Example Tile Visualization](plots/state_tiles_window_example.png)
+
+### State Sequence Visualization
+
+In addition to the tile visualization, the system also generates state sequence visualizations inspired by the bnpy visualization style:
+
+- **Top Panel**: Shows the time series data for each feature
+- **Bottom Panel**: Displays state assignments as a color-coded band
+- **Colorbar**: Maps colors to state indices
+
+This visualization provides a clear view of how state assignments relate to the underlying data features and helps identify patterns such as:
+
+- State transitions triggered by specific data patterns
+- Periods of state persistence
+- The relationship between feature values and state assignments
+
+The state sequence visualizations are automatically saved to the `plots/` directory as `state_sequence_window_X.png` where X is the window number.
+
+![Example State Sequence Visualization](plots/state_sequence_window_example.png)
+
+### Transition Matrix Exports
+
+The system automatically saves the transition probability matrix in multiple formats:
+
+- **PNG Image**: Heatmap visualization of the transition probabilities
+- **NumPy File (.npy)**: Raw numerical data for programmatic analysis
+- **CSV File (.csv)**: Tab-delimited format for easy import into spreadsheets or other tools
+
+These files are saved at several points:
+- **During visualization**: Updated with each window and saved to `plots/transition_probs.png`
+- **Periodically during training**: Saved along with model checkpoints to `plots/latest_transition_matrix.*`
+- **At the end of processing**: Final matrix saved to `plots/final_transition_matrix.*`
+
+The transition matrix is a key output of the model, showing:
+- The probability of transitioning from one state to another
+- State persistence (diagonal values)
+- Rare transitions (off-diagonal low-probability transitions)
+- Potential state clusters (groups of states with high transition probabilities between them)
+
+These exports facilitate further analysis of the discovered state dynamics, enabling integration with other analysis tools and visualization software.
+
+### Learning Curve Visualization
+
+The system provides comprehensive learning curve visualizations to track model performance and help with debugging:
+
+- **Training Loss Curve**: Shows the negative log-likelihood evolution over time
+- **Smoothed Trends**: Includes both windowed smoothing and exponential moving average
+- **State Count Correlation**: Visualizes the relationship between state count changes and loss values
+- **Optimization Metrics**: Displays percentage reduction in loss and highlights minimum loss points
+
+Key features of the learning curve visualization:
+
+1. **Multiple Loss Representations**:
+   - Raw loss values for detailed inspection
+   - Smoothed trends to identify overall patterns
+   - Exponential moving average for stable trend visualization
+   - Log-scale inset for handling large dynamic ranges
+
+2. **State Count Integration**:
+   - State count plot aligned with loss curve
+   - Correlation coefficient between loss and state count
+   - Annotations for significant state count changes
+
+3. **Performance Metrics**:
+   - Percentage reduction in loss from initial to current value
+   - Identification of minimum loss points with timing information
+   - Visual indicators of model convergence
+
+The learning curve visualizations are automatically saved to the `plots/` directory as `learning_curve_window_X.png` and `latest_learning_curve.png`.
+
+![Example Learning Curve Visualization](plots/learning_curve_example.png)
 
 ## References
 
