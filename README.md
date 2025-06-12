@@ -338,33 +338,6 @@ These mechanisms are inspired by the "split-merge" and "birth-death" MCMC algori
 
 ### Implementation Details
 
-The dynamic state management is implemented in the `update_states` method of the `HDPHMM` class:
-
-- **Delete**: States with beta weights below a threshold (default: 1e-3) are marked as inactive
-- **Merge**: States with means closer than a threshold (default: 0.5 in normalized space) are combined by weighted averaging
-- **Birth**: When model fit is poor (high negative log-likelihood), a new state is initialized using observations that are poorly explained
-
-### State Evolution Visualization
-
-The implementation includes comprehensive state tracking and visualization tools to monitor how these mechanisms affect model complexity:
-
-1. **Real-time Console Output**: 
-   - Detailed information about state updates during training
-   - Clear display of birth, merge, and delete events with affected state IDs
-   - Statistics on state counts and changes
-
-2. **State Evolution Timeline**:
-   - Text-based visualization showing state evolution across training windows
-   - Symbols indicate active states (●), births (⊕), merges (⊙), and deletions (⊗)
-   - Helps identify patterns in how states are created, merged, and deleted
-
-3. **State Evolution Summary**:
-   - Detailed final report on all state changes during training
-   - Counts of birth, merge, and delete events by state ID
-   - Identifies which states were most frequently created, merged, or deleted
-
-This enhanced state tracking helps debug model behavior and fine-tune hyperparameters for optimal state management.
-
 #### Birth Mechanism
 
 The birth mechanism monitors the average negative log-likelihood of observations and creates new states when the model fit is poor:
@@ -415,6 +388,52 @@ The implementation includes visualization of state counts over time, allowing yo
 - **High Precision**: Decrease `merge_distance` (e.g., 0.3) to prevent merging of potentially distinct states
 
 These mechanisms work together to maintain an optimal number of states that balances model complexity with computational efficiency. By properly tuning these parameters, you can ensure the model adapts appropriately to your specific data characteristics.
+
+## Enhanced State Visualization Features
+
+The system now includes several advanced visualization features for better understanding and debugging of state dynamics:
+
+### State Evolution Visualization
+
+A dedicated visualization shows the birth, merge, and delete events across training windows:
+
+- **State Count Plot**: Tracks the number of active states over time, with markers for state change events
+- **Change Event Counts**: Shows the number of birth, merge, and delete events per update window
+- **State Timeline**: A textual representation of state evolution across training windows
+
+### Detailed State Change Reporting
+
+The system provides comprehensive reporting of state changes during and after training:
+
+- **Real-time Updates**: Prints detailed information about state changes during training
+- **Change Summary Format**: `States: 9 → 10 | Changes: +1 birth, ~2 merges | Details: Birth: state(s) 12; Merge: 5→3, 8→4`
+- **Final Summary**: At the end of training, shows total birth, merge, and delete events by state
+
+### Learning Curve Visualization
+
+An enhanced learning curve visualization for model performance debugging:
+
+- **Raw and Smoothed Loss**: Shows both raw loss values and smoothed trends (with moving averages)
+- **State Count Correlation**: Visualizes the relationship between state count changes and loss value
+- **Performance Metrics**: Displays loss reduction percentage and minimum loss value
+
+### Robust Visualization System
+
+All visualizations are now more robust across different systems:
+
+- **Headless Support**: Full visualization support in headless/no-GUI mode
+- **Error Handling**: Graceful handling of visualization errors without crashing the main training loop
+- **File Outputs**: All visualizations are saved to the `plots/` directory with consistent naming
+
+### Interpreting Visualizations
+
+The visualizations provide key insights into model behavior:
+
+- **Optimal State Count**: The state evolution plot helps identify when the model reaches a stable number of states
+- **Convergence**: The learning curve shows when the model has converged to a stable solution
+- **State Dynamics**: The state change reports reveal which states are most active, merged, or deleted
+
+These enhanced visualization features make it much easier to debug, understand, and optimize the model's behavior, particularly how it determines the optimal number of states.
 
 ## Contributing
 
@@ -547,37 +566,6 @@ The transition matrix is a key output of the model, showing:
 - Potential state clusters (groups of states with high transition probabilities between them)
 
 These exports facilitate further analysis of the discovered state dynamics, enabling integration with other analysis tools and visualization software.
-
-### Learning Curve Visualization
-
-The system provides comprehensive learning curve visualizations to track model performance and help with debugging:
-
-- **Training Loss Curve**: Shows the negative log-likelihood evolution over time
-- **Smoothed Trends**: Includes both windowed smoothing and exponential moving average
-- **State Count Correlation**: Visualizes the relationship between state count changes and loss values
-- **Optimization Metrics**: Displays percentage reduction in loss and highlights minimum loss points
-
-Key features of the learning curve visualization:
-
-1. **Multiple Loss Representations**:
-   - Raw loss values for detailed inspection
-   - Smoothed trends to identify overall patterns
-   - Exponential moving average for stable trend visualization
-   - Log-scale inset for handling large dynamic ranges
-
-2. **State Count Integration**:
-   - State count plot aligned with loss curve
-   - Correlation coefficient between loss and state count
-   - Annotations for significant state count changes
-
-3. **Performance Metrics**:
-   - Percentage reduction in loss from initial to current value
-   - Identification of minimum loss points with timing information
-   - Visual indicators of model convergence
-
-The learning curve visualizations are automatically saved to the `plots/` directory as `learning_curve_window_X.png` and `latest_learning_curve.png`.
-
-![Example Learning Curve Visualization](plots/learning_curve_example.png)
 
 ## References
 

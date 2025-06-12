@@ -146,7 +146,6 @@ for k in range(self.current_states):
         active_indices.append(k)
     else:
         inactive_indices.append(k)
-        state_changes['deleted'].append(k)
 ```
 
 #### Merge Mechanism
@@ -165,9 +164,6 @@ if dist < merge_distance:
     # Update parameters of state i
     self.means.data[i_idx] = (weight_i * self.means[i_idx] + weight_j * self.means[j_idx]) / total_weight
     # ...additional parameter updates
-    
-    # Record merge
-    state_changes['merged'].append((j_idx, i_idx))
 ```
 
 #### Birth Mechanism
@@ -179,59 +175,7 @@ New states are created when observations are poorly explained by existing states
 if avg_nll > birth_threshold and self.current_states < self.max_states:
     # Create new state from poorly fit observations
     # ...implementation details
-    
-    # Record birth
-    state_changes['birthed'].append(new_state_idx)
 ```
-
-### State Change Tracking and Visualization
-
-The implementation includes robust mechanisms for tracking and visualizing state changes:
-
-#### State Change Tracking
-
-The `update_states` method returns detailed information about state changes:
-
-```python
-state_changes = {
-    'deleted': deleted_states,         # List of deleted state IDs
-    'merged': merged_pairs,            # List of (source, destination) merge pairs
-    'birthed': birthed_states,         # List of new state IDs
-    'initial_states': initial_states,  # Number of states before update
-    'final_states': current_states,    # Number of states after update
-    'active_states': active_indices,   # List of active state IDs
-    'inactive_states': inactive_indices # List of inactive state IDs
-}
-```
-
-#### Formatted State Update Display
-
-The `format_state_update_stats` method in `LiveHDPHMM` converts state change information into a concise, readable format:
-
-```python
-# Example output: "States: 9 → 10 | Changes: +1 birth, ~2 merges | Details: Birth: state(s) 12; Merge: 5→3, 8→4"
-stats_str = self.format_state_update_stats(state_change_info)
-print(f"\n[Window {self.window_count}] State Update: {stats_str}")
-```
-
-#### State Evolution Timeline
-
-The `print_state_evolution_summary` method provides a text-based visualization of state evolution:
-
-```
-State Evolution Timeline:
-     0   1   2   3   4
-   ────────────────────
- 0│ ●   ●   ●   ●   ● 
- 1│ ●   ●   ●   ⊗     
- 2│ ●   ●   ⊙         
- 3│ ●   ●   ●   ●   ● 
- 4│         ⊕   ●   ● 
-
-Legend: ● Active  ⊕ Birth  ⊗ Delete  ⊙ Merge
-```
-
-This visualization helps identify patterns in how states are created, merged, and deleted over time.
 
 ### Parameter Tuning
 
@@ -277,58 +221,99 @@ This incremental approach allows the model to adapt to changing data distributio
 
 ### Real-time Visualization
 
-The `LiveVisualizer` class provides comprehensive visualization capabilities:
+The `LiveVisualizer` class provides real-time visualization capabilities:
 
-#### Basic Visualizations
 - Time series plots with state assignments
+- State count tracking over time
 - Transition probability heatmaps
-- State occupation histograms
+- Tile visualization of state assignments over time
+- Loss tracking for monitoring convergence
 
-#### Advanced Visualizations
-- **Tile Visualization**: Shows state assignments across time windows as a color-coded grid
-- **State Sequence Visualization**: Displays state transitions with data in the style of bnpy
-- **Learning Curve Visualization**: Tracks loss with smoothing, EMA, and correlation to state counts
+These visualizations help in understanding model behavior and diagnosing issues during training.
 
-#### State Evolution Visualization
-- Text-based state evolution timeline with symbols for different events
-- Detailed state change statistics with birth, merge, and delete events
-- Visual correlation between state changes and model performance
+---
 
-The `create_learning_curve` method implements a sophisticated loss visualization:
+## State Visualization and Monitoring
+
+The visualization system provides comprehensive monitoring of model dynamics during training, with a particular focus on state evolution.
+
+### State Evolution Tracking
+
+The system tracks state changes in detail through several mechanisms:
+
+```python
+# In update_states method
+state_changes = {
+    'deleted': deleted_states,    # States removed due to low probability
+    'merged': merged_pairs,       # States merged due to similarity
+    'birthed': birthed_states,    # New states created for poorly fit data
+    'initial_states': initial_states,  # Number of states before update
+    'final_states': current_states,    # Number of states after update
+    'active_states': active_indices    # Currently active state indices
+}
+```
+
+This information is used to generate both textual and graphical representations of state dynamics.
+
+### Visualization Components
+
+#### Format State Update Stats
+
+Converts raw state change information into a human-readable format:
+
+```python
+def format_state_update_stats(self, state_change_info):
+    """Format state update statistics in a clear, concise way"""
+    # Generates output like:
+    # States: 9 → 10 | Changes: +1 birth, ~2 merges | Details: Birth: state(s) 12; Merge: 5→3, 8→4
+```
+
+#### State Evolution Plot
+
+Creates a comprehensive visualization of state changes over time:
+
+```python
+def create_state_evolution_plot(self, state_changes, save_path=None):
+    """Create a visualization of state birth, merge, and delete events"""
+    # Shows state count over time with markers for birth, merge, delete events
+    # Includes a bar chart showing the number of each event type per update
+```
+
+#### Text-based State Timeline
+
+Generates a text-based visualization showing state evolution:
+
+```python
+def print_state_evolution_summary(self):
+    """
+    Print a text-based visualization of state evolution through time.
+    Shows births, merges, and deletes of states across training windows.
+    """
+    # Creates a timeline with symbols:
+    # ● Active  ⊕ Birth  ⊗ Delete  ⊙ Merge
+```
+
+### Implementation Details
+
+The state visualization system uses several advanced techniques:
+
+1. **Error Handling**: All visualizations are wrapped in try-except blocks to prevent crashes
+2. **Compatible Layout**: Uses `subplots_adjust` instead of `tight_layout` for better cross-platform compatibility
+3. **Headless Support**: Detects display availability and adjusts accordingly
+4. **File Output**: All visualizations are saved to disk, with both timestamped and "latest" versions
+
+### Learning Curve Visualization
+
+The learning curve visualization connects state changes to model performance:
 
 ```python
 def create_learning_curve(self, losses, state_counts=None, save_path=None):
-    # Plot raw loss values
-    ax1.plot(window_indices, losses_np, 'b-', alpha=0.5, label='Raw Loss')
-    
-    # Plot smoothed loss trend with adaptive window size
-    window_size = min(25, max(5, len(losses_np) // 10))
-    if len(losses_np) > window_size:
-        smoothed = np.convolve(losses_np, np.ones(window_size)/window_size, mode='valid')
-        ax1.plot(smoothed_x, smoothed, 'r-', linewidth=2, label=f'Smoothed (window={window_size})')
-    
-    # Add exponential moving average
-    if len(losses_np) > 10:
-        alpha = 0.1  # Smoothing factor
-        ema = np.zeros_like(losses_np)
-        ema[0] = losses_np[0]
-        for i in range(1, len(losses_np)):
-            ema[i] = alpha * losses_np[i] + (1 - alpha) * ema[i-1]
-        ax1.plot(window_indices, ema, 'g-', linewidth=2, label='Exp. Moving Avg')
-    
-    # Plot state counts and calculate correlation with loss
-    if state_counts and len(state_counts) > 0:
-        ax2 = plt.subplot(2, 1, 2)
-        ax2.plot(state_indices, state_counts_np, 'g-', linewidth=2, label='Active States')
-        
-        # Add correlation analysis
-        if len(losses_np) == len(state_counts_np):
-            correlation = np.corrcoef(losses_np, state_counts_np)[0, 1]
-            ax2.text(0.02, 0.02, f'Correlation with loss: {correlation:.2f}',
-                    transform=ax2.transAxes, bbox=dict(facecolor='white', alpha=0.7))
+    """Create a detailed learning curve visualization for model performance debugging"""
+    # Shows raw loss, smoothed trends, and exponential moving average
+    # When state_counts provided, shows correlation between states and loss
 ```
 
-These visualizations help in understanding model behavior and diagnosing issues during training.
+This comprehensive visualization system provides valuable insights into how the model's state space evolves during training, helping users understand and debug the dynamic state management process.
 
 ---
 
@@ -351,43 +336,31 @@ Key methods:
 
 ### trainer.py
 
-Manages training, inference, and state tracking:
+Manages training and inference:
 
 - `LiveHDPHMM` class for incremental training
 - Optimization and parameter updates
-- Loss and state count tracking
-- Comprehensive state change monitoring
+- Loss tracking and convergence monitoring
 - Checkpointing and model persistence
 
 Key methods:
 - `update_model`: Performs incremental parameter updates
-- `update_states_safe`: Safely manages dynamic state adjustments
-- `format_state_update_stats`: Formats state changes for clear display
-- `print_state_evolution_summary`: Creates text-based state evolution visualization
 - `infer`: Performs inference on new data
 - `save_model`/`load_model`: Handles model persistence
-- `save_transition_matrix`: Exports transition probabilities in multiple formats
-
-The trainer now tracks detailed information about state changes, including birth, merge, and delete events, to help monitor and debug the model's dynamic state management.
 
 ### live_visualize.py
 
-Provides comprehensive visualization capabilities:
+Provides visualization capabilities:
 
-- `LiveVisualizer` class for real-time plots and saved visualizations
+- `LiveVisualizer` class for real-time plots
 - Time series visualization with state coloring
-- Transition probability heatmaps and exports
-- State count tracking and evolution visualization
-- Advanced visualization types: tile plots, state sequences, learning curves
+- Transition probability heatmaps
+- State count tracking
+- Tile visualization of state evolution
 
 Key methods:
 - `update_plot`: Updates all visualizations with new data
 - `create_tile_visualization`: Creates tile plots of state assignments
-- `show_state_sequence`: Generates state sequence visualizations (bnpy-style)
-- `create_learning_curve`: Creates detailed loss and state count visualizations
-- `create_state_evolution_plot`: Visualizes state birth, merge, and delete events
-
-The visualizations support both interactive mode and headless operation with automatic saving of all plots.
 
 ### main.py
 

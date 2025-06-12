@@ -16,6 +16,9 @@ class LiveVisualizer:
         self.n_features = n_features
         self.window_size = window_size
         
+        # Create plots directory if it doesn't exist
+        os.makedirs('plots', exist_ok=True)
+        
         # Use non-interactive backend if running in headless mode
         import matplotlib
         if 'DISPLAY' not in os.environ or not os.environ['DISPLAY']:
@@ -83,13 +86,19 @@ class LiveVisualizer:
             min_states = max(0, min(state_counts) - 1)
             ax.set_ylim(min_states, max_states)
         
-        self.fig.tight_layout()
+        try:
+            # Use subplots_adjust instead of tight_layout for better compatibility
+            self.fig.subplots_adjust(hspace=0.4, top=0.95, bottom=0.1, left=0.1, right=0.95)
+        except Exception as e:
+            print(f"Warning: Figure layout adjustment failed: {e}")
         
-        # Save figure instead of displaying in headless mode
-        if 'DISPLAY' not in os.environ or not os.environ['DISPLAY']:
-            plt.savefig(f'plots/live_plot_window_{self.window_count}.png')
-        else:
-            plt.pause(0.01)  # Only pause for display if in GUI mode
+        # Always save the figure, regardless of display mode
+        try:
+            self.fig.savefig(f'plots/live_plot_window_{self.window_count}.png', dpi=300)
+            if 'DISPLAY' in os.environ and os.environ['DISPLAY']:
+                plt.pause(0.01)  # Only pause for display if in GUI mode
+        except Exception as e:
+            print(f"Warning: Failed to save live plot: {e}")
         
         # Save transition probabilities heatmap
         plt.figure(figsize=(8, 6))
@@ -98,8 +107,11 @@ class LiveVisualizer:
         plt.xlabel('To State')
         plt.ylabel('From State')
         
-        # Save as image
-        plt.savefig('plots/transition_probs.png')
+        # Make sure plots directory exists
+        os.makedirs('plots', exist_ok=True)
+        
+        # Save as image with bbox_inches to ensure everything is captured
+        plt.savefig('plots/transition_probs.png', dpi=300, bbox_inches='tight')
         
         # Also save as numpy file for later analysis
         trans_probs_np = trans_probs.cpu().detach().numpy()
@@ -215,8 +227,14 @@ class LiveVisualizer:
                     verticalalignment='center',
                     transform=plt.gca().transAxes)
         
-        plt.tight_layout()
-        plt.savefig(f'plots/state_tiles_window_{self.window_count}.png')
+        # Use subplots_adjust for better compatibility
+        plt.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.15)
+        
+        # Make sure plots directory exists
+        os.makedirs('plots', exist_ok=True)
+        
+        # Save with bbox_inches to ensure everything is captured
+        plt.savefig(f'plots/state_tiles_window_{self.window_count}.png', dpi=300, bbox_inches='tight')
         plt.close()
         
         # Also create the state sequence visualization for the most recent window
@@ -288,11 +306,13 @@ class LiveVisualizer:
         cbar.set_ticks(np.arange(max_states))
         cbar.set_label('State')
         
-        plt.tight_layout()
+        # Don't use tight_layout when we have a custom colorbar axis
+        # Adjust spacing manually instead
+        fig.subplots_adjust(right=0.85, hspace=0.15)
         
         # Save or display
         if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.savefig(save_path, dpi=300)
             plt.close(fig)
         else:
             plt.show()
@@ -423,18 +443,27 @@ class LiveVisualizer:
             min_states = max(0, min(state_counts_np) - 1)
             ax2.set_ylim(min_states, max_states)
         
-        plt.tight_layout()
+        # Use subplots_adjust for better compatibility
+        plt.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.1, hspace=0.3)
         
         # Save figure
         if save_path is None:
             save_path = f'plots/learning_curve_window_{self.window_count}.png'
             
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        
-        # Also save a general learning curve that gets updated
-        plt.savefig('plots/latest_learning_curve.png', dpi=300, bbox_inches='tight')
-        
-        plt.close()
+        try:
+            # Make sure plots directory exists
+            os.makedirs('plots', exist_ok=True)
+            
+            # Save figures with bbox_inches='tight' to ensure all content is included
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            
+            # Also save a general learning curve that gets updated
+            plt.savefig('plots/latest_learning_curve.png', dpi=300, bbox_inches='tight')
+        except Exception as e:
+            print(f"Warning: Failed to save learning curve plot: {e}")
+        finally:
+            # Always close the figure to prevent memory leaks
+            plt.close()
     
     def create_state_evolution_plot(self, state_changes, save_path=None):
         """
@@ -536,30 +565,45 @@ class LiveVisualizer:
             max_changes = max([births[i] + merges[i] + deletes[i] for i in range(len(births))], default=1)
             ax2.set_ylim(0, max_changes + 1)
             
-            plt.tight_layout()
+            # Use subplots_adjust for better compatibility
+            plt.subplots_adjust(left=0.12, right=0.95, top=0.95, bottom=0.1, hspace=0.3)
             
             # Save figure
             if save_path is None:
                 save_path = f'plots/state_evolution_window_{self.window_count}.png'
                 
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            
-            # Also save a general state evolution plot that gets updated
-            plt.savefig('plots/latest_state_evolution.png', dpi=300, bbox_inches='tight')
+            try:
+                # Make sure plots directory exists
+                os.makedirs('plots', exist_ok=True)
+                
+                # Save figures with bbox_inches='tight' to ensure all content is included
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                
+                # Also save a general state evolution plot that gets updated
+                plt.savefig('plots/latest_state_evolution.png', dpi=300, bbox_inches='tight')
+            except Exception as e:
+                print(f"Warning: Failed to save state evolution plot: {e}")
             
         except Exception as e:
             print(f"Error creating state evolution plot: {e}")
+            # If we get an error, try to create a simplified version
+            try:
+                # Create a new simple figure with just text explaining the error
+                plt.figure(figsize=(10, 6))
+                plt.text(0.5, 0.5, f"Error creating state evolution plot:\n{e}",
+                        ha='center', va='center', fontsize=12, 
+                        transform=plt.gca().transAxes)
+                
+                if save_path is None:
+                    save_path = f'plots/state_evolution_window_{self.window_count}.png'
+                
+                plt.savefig(save_path, dpi=300)
+                plt.savefig('plots/latest_state_evolution.png', dpi=300)
+            except:
+                print("Could not create error message plot")
         finally:
             # Make sure to close the figure even if there's an error
             plt.close()
-            save_path = f'plots/state_evolution_window_{self.window_count}.png'
-            
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        
-        # Also save a general state evolution plot that gets updated
-        plt.savefig('plots/latest_state_evolution.png', dpi=300, bbox_inches='tight')
-        
-        plt.close()
     
     def close(self):
         """Close the plot."""
