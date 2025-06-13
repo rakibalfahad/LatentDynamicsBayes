@@ -25,8 +25,16 @@ This document provides a detailed explanation of the Hierarchical Dirichlet Proc
    - [Data Collection](#data-collection)
    - [Incremental Training](#incremental-training)
    - [Real-time Visualization](#real-time-visualization)
+   - [State Evolution Tracking](#state-evolution-tracking)
 
-5. [Code Structure](#code-structure)
+5. [Visualization Suite](#visualization-suite)
+   - [Basic Time Series Visualization](#basic-time-series-visualization)
+   - [State Pattern Analysis](#state-pattern-analysis)
+   - [Composite Visualizations](#composite-visualizations)
+   - [Learning Curves and Performance Metrics](#learning-curves-and-performance-metrics)
+   - [Headless Operation](#headless-operation)
+
+6. [Code Structure](#code-structure)
    - [hdp_hmm.py](#hdp_hmmpy)
    - [trainer.py](#trainerpy)
    - [live_visualize.py](#live_visualizepy)
@@ -227,9 +235,99 @@ The `LiveVisualizer` class provides real-time visualization capabilities:
 - State count tracking over time
 - Transition probability heatmaps
 - Tile visualization of state assignments over time
-- Loss tracking for monitoring convergence
+- Learning curve visualization with advanced smoothing techniques
+- State evolution plots showing birth, merge, and delete events
+- State sequence visualization inspired by bnpy
 
-These visualizations help in understanding model behavior and diagnosing issues during training.
+These visualizations help in understanding model behavior and diagnosing issues during training. The implementation is designed to be robust across different environments, including headless servers and various operating systems.
+
+```python
+# Example of robust visualization with cross-platform compatibility
+try:
+    # Use subplots_adjust instead of tight_layout for better compatibility
+    self.fig.subplots_adjust(hspace=0.4, top=0.95, bottom=0.1, left=0.1, right=0.95)
+except Exception as e:
+    print(f"Warning: Figure layout adjustment failed: {e}")
+
+# Always save the figure, regardless of display mode
+try:
+    # Create plots directory if it doesn't exist
+    os.makedirs('plots', exist_ok=True)
+    self.fig.savefig(f'plots/live_plot_window_{self.window_count}.png', dpi=300, bbox_inches='tight')
+    if 'DISPLAY' in os.environ and os.environ['DISPLAY']:
+        plt.pause(0.01)  # Only pause for display if in GUI mode
+except Exception as e:
+    print(f"Warning: Failed to save live plot: {e}")
+```
+
+---
+
+## Robust Visualization Implementation
+
+The visualization system has been enhanced to ensure reliability across different environments and platforms:
+
+### Cross-Platform Layout Management
+
+Instead of using `tight_layout()` which can fail on some systems resulting in blank plots, the code now uses explicit `subplots_adjust()` with carefully chosen parameters:
+
+```python
+# Instead of this (can fail on some systems):
+self.fig.tight_layout()
+
+# We now use this (more robust):
+try:
+    # Use subplots_adjust instead of tight_layout for better compatibility
+    self.fig.subplots_adjust(hspace=0.4, top=0.95, bottom=0.1, left=0.1, right=0.95)
+except Exception as e:
+    print(f"Warning: Figure layout adjustment failed: {e}")
+```
+
+### Directory Management
+
+All plot saving operations now include automatic directory creation to prevent failures:
+
+```python
+# Create plots directory if it doesn't exist
+os.makedirs('plots', exist_ok=True)
+
+# Save with bbox_inches to ensure all content is captured
+plt.savefig(f'plots/state_tiles_window_{self.window_count}.png', dpi=300, bbox_inches='tight')
+```
+
+### Error Handling
+
+All visualization operations are wrapped in try-except blocks with appropriate error messages:
+
+```python
+try:
+    # Visualization code
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+except Exception as e:
+    print(f"Warning: Failed to save plot: {e}")
+finally:
+    # Always close the figure to prevent memory leaks
+    plt.close()
+```
+
+### Headless Environment Detection
+
+The code automatically detects if it's running in a headless environment and adjusts accordingly:
+
+```python
+# Use non-interactive backend if running in headless mode
+import matplotlib
+if 'DISPLAY' not in os.environ or not os.environ['DISPLAY']:
+    matplotlib.use('Agg')  # Use non-GUI backend
+
+# ...
+
+# Always save the figure, regardless of display mode
+self.fig.savefig(f'plots/live_plot_window_{self.window_count}.png', dpi=300)
+if 'DISPLAY' in os.environ and os.environ['DISPLAY']:
+    plt.pause(0.01)  # Only pause for display if in GUI mode
+```
+
+These improvements ensure that the visualization system works reliably across different platforms, including headless servers and various operating systems, and that generated plots are always properly saved and displayed.
 
 ---
 
@@ -293,14 +391,201 @@ def print_state_evolution_summary(self):
     # ● Active  ⊕ Birth  ⊗ Delete  ⊙ Merge
 ```
 
+### Tile and State Sequence Visualization
+
+The tile and state sequence visualizations provide complementary views of state assignments:
+
+```python
+def create_tile_visualization(self):
+    """
+    Create a tile visualization showing state assignments over time,
+    similar to the visualization in bnpy.
+    
+    The visualization shows:
+    - Each row represents a time point
+    - Each column represents a window
+    - Colors represent different states
+    - This helps visualize state persistence and transitions over time
+    """
+    # Create a 2D array from state history
+    state_matrix = np.zeros((time_points, windows))
+    
+    # Fill the matrix with state assignments
+    for w in range(windows):
+        window_states = self.state_history[w]
+        for t in range(min(time_points, len(window_states))):
+            state_matrix[t, w] = window_states[t]
+    
+    # First subplot: State tile visualization
+    plt.subplot(2, 1, 1)
+    im = plt.imshow(state_matrix, aspect='auto', interpolation='none', 
+                   cmap='plasma', vmin=0, vmax=max_state)
+```
+
+The state sequence visualization displays data alongside state assignments:
+
+```python
+def show_state_sequence(self, data, states, max_states=None, save_path=None):
+    """
+    Create a visualization showing data sequence with state assignments below,
+    inspired by the bnpy visualization style.
+    """
+    # Plot time series data in top subplot
+    for dim in range(data_np.shape[1]):
+        axes[0].plot(data_np[:, dim], '.-', label=f'Feature {dim+1}')
+    
+    # Create state image in bottom subplot
+    img_height = 100  # Height of the state image
+    state_img = np.tile(states_np, (img_height, 1))
+    
+    # Display the state image
+    img = axes[1].imshow(state_img, interpolation='nearest', aspect='auto',
+                       vmin=-0.5, vmax=max_states-0.5, cmap=cmap)
+```
+
+Key features of these visualizations:
+
+1. **Multi-window History**: Tracks state assignments across multiple windows
+2. **Transition Analysis**: Computes and displays state transition frequencies
+3. **Color Consistency**: Uses consistent color mapping for states across visualizations
+4. **Combined Data/State View**: Shows both raw data and state assignments together
+5. **Cross-platform Layout**: Uses explicit subplot adjustment instead of tight_layout
+6. **Robust Error Handling**: Prevents crashes from visualization issues
+
+These visualizations are particularly valuable for identifying patterns in state usage and understanding how the model segments the time series data.
+
+### State Pattern and Composite Visualizations
+
+Two advanced visualization methods have been added to provide deeper insights into state characteristics:
+
+```python
+def visualize_state_patterns(self, data=None, states=None, save_path=None):
+    """
+    Create a comprehensive visualization showing what patterns each state represents.
+    Shows average pattern, standard deviation, and min/max ranges for each state.
+    """
+    # Calculate statistics for each state
+    for i, state in enumerate(unique_states):
+        mask = states_np == state
+        state_data = data_np[mask]
+        
+        # Calculate statistics
+        mean_pattern = np.mean(state_data, axis=0)
+        std_pattern = np.std(state_data, axis=0)
+        min_pattern = np.min(state_data, axis=0)
+        max_pattern = np.max(state_data, axis=0)
+        
+        # Plot statistics to understand state characteristics
+        # ...
+```
+
+The composite visualization provides a unified view combining multiple aspects:
+
+```python
+def create_composite_state_visualization(self, data=None, states=None, save_path=None):
+    """
+    Create a comprehensive visualization that combines state sequence and patterns.
+    
+    This visualization combines:
+    1. Time series data with state coloring
+    2. State sequence visualization (similar to bnpy)
+    3. State pattern summaries
+    4. Transition probabilities between states
+    5. State duration histogram
+    """
+    # Creates several subplots showing different aspects of state behavior
+    # ...
+```
+
+These visualizations are automatically generated periodically during training:
+
+```python
+# In update_plot method
+# Create state pattern visualization every 10 windows
+if self.window_count % 10 == 0:
+    save_path = f'plots/state_patterns_window_{self.window_count}.png'
+    self.visualize_state_patterns(data, states, save_path)
+    
+    # Also create a composite visualization
+    save_path = f'plots/composite_viz_window_{self.window_count}.png'
+    self.create_composite_state_visualization(data, states, save_path)
+```
+
+The visualizations help users interpret what each state represents in the data, how states transition between each other, and how long the model typically stays in each state. This is particularly valuable for understanding the latent structure discovered by the model.
+
+### State-Specific Time Series Visualization
+
+The system includes a specialized visualization that shows time series data for each discovered state separately, allowing detailed examination of the temporal patterns captured by each state:
+
+```python
+def visualize_state_time_series(self, data=None, states=None, save_path=None):
+    """
+    Create visualizations showing time series data for each state separately.
+    
+    This method:
+    1. Groups data points by state
+    2. For each state, shows the time series of all features
+    3. Highlights where each state appears in the full sequence
+    """
+```
+
+This visualization creates:
+
+1. **Individual State Files**: One file per state showing:
+   - State occurrence mask (where in the sequence this state appears)
+   - Time series for each feature with this state's data points highlighted
+   - Statistical indicators (mean, standard deviation) for each feature in this state
+
+2. **Summary Visualization**: A comprehensive overview showing:
+   - Complete time series with color-coded state assignments
+   - Timeline of state occurrences across the sequence
+
+Example output:
+
+For each state `X`, the system generates:
+- `plots/state_time_series/state_X_window_Y.png`: Detailed view of state X's time series pattern
+- `plots/state_time_series/all_states_summary_window_Y.png`: Overview of all states
+
+These visualizations make it easy to:
+- Identify when each state is active in the sequence
+- Compare feature patterns across different states
+- Understand the temporal characteristics of each state
+- Detect potential state confusion or redundancy
+
 ### Implementation Details
 
 The state visualization system uses several advanced techniques:
 
-1. **Error Handling**: All visualizations are wrapped in try-except blocks to prevent crashes
+1. **Error Handling**: All visualizations are wrapped in try-except blocks to prevent crashes during rendering or saving
 2. **Compatible Layout**: Uses `subplots_adjust` instead of `tight_layout` for better cross-platform compatibility
-3. **Headless Support**: Detects display availability and adjusts accordingly
+3. **Headless Support**: Detects display availability and adjusts accordingly for server environments
 4. **File Output**: All visualizations are saved to disk, with both timestamped and "latest" versions
+5. **Plot Directory Management**: Automatic creation of plots directory to prevent save failures
+6. **Adaptive Margins**: Uses `bbox_inches='tight'` to ensure all plot content is visible
+7. **Fallback Mechanisms**: Creates simplified error plots if advanced visualization fails
+
+```python
+# Example of robust error handling with fallback mechanism
+try:
+    # Attempt to create advanced visualization
+    self.create_state_evolution_plot(state_changes, save_path)
+except Exception as e:
+    print(f"Error creating state evolution plot: {e}")
+    try:
+        # Create a new simple figure with just text explaining the error
+        plt.figure(figsize=(10, 6))
+        plt.text(0.5, 0.5, f"Error creating state evolution plot:\n{e}",
+                ha='center', va='center', fontsize=12, 
+                transform=plt.gca().transAxes)
+                
+        plt.savefig(save_path, dpi=300)
+        plt.savefig('plots/latest_state_evolution.png', dpi=300)
+    except:
+        print("Could not create error message plot")
+finally:
+    # Always close the figure to prevent memory leaks
+    plt.close()
+```
 
 ### Learning Curve Visualization
 
@@ -311,7 +596,39 @@ def create_learning_curve(self, losses, state_counts=None, save_path=None):
     """Create a detailed learning curve visualization for model performance debugging"""
     # Shows raw loss, smoothed trends, and exponential moving average
     # When state_counts provided, shows correlation between states and loss
+    
+    # Convert to numpy array
+    losses_np = np.array(losses)
+    window_indices = np.arange(len(losses_np))
+    
+    # Plot raw loss values
+    ax1.plot(window_indices, losses_np, 'b-', alpha=0.5, label='Raw Loss')
+    
+    # Plot smoothed loss trend
+    window_size = min(25, max(5, len(losses_np) // 10))  # Adaptive window size
+    if len(losses_np) > window_size:
+        smoothed = np.convolve(losses_np, np.ones(window_size)/window_size, mode='valid')
+        smoothed_x = window_indices[window_size-1:]
+        ax1.plot(smoothed_x, smoothed, 'r-', linewidth=2, label=f'Smoothed (window={window_size})')
+    
+    # Add exponential moving average
+    if len(losses_np) > 10:
+        alpha = 0.1  # Smoothing factor
+        ema = np.zeros_like(losses_np)
+        ema[0] = losses_np[0]
+        for i in range(1, len(losses_np)):
+            ema[i] = alpha * losses_np[i] + (1 - alpha) * ema[i-1]
+        ax1.plot(window_indices, ema, 'g-', linewidth=2, label='Exp. Moving Avg')
 ```
+
+Features of the learning curve visualization:
+
+1. **Multiple Smoothing Methods**: Raw values, window smoothing, and exponential moving average
+2. **Adaptive Window Size**: Automatically adjusts smoothing window based on data length
+3. **Progress Indicators**: Displays loss reduction percentage and min/max points
+4. **State Correlation**: Shows correlation between loss and number of states
+5. **Log Scale Option**: Automatically adds log scale inset for wide-range loss values
+6. **Dynamic Saving**: Creates both timestamped and latest versions for easy reference
 
 This comprehensive visualization system provides valuable insights into how the model's state space evolves during training, helping users understand and debug the dynamic state management process.
 
@@ -427,3 +744,145 @@ The implementation can be extended in several ways:
 - Van Gael, J., Saatci, Y., Teh, Y. W., & Ghahramani, Z. (2008). Beam Sampling for the Infinite Hidden Markov Model. In Proceedings of the 25th International Conference on Machine Learning (ICML).
 
 - Blei, D. M., & Jordan, M. I. (2006). Variational Inference for Dirichlet Process Mixtures. Bayesian Analysis, 1(1), 121-143.
+
+---
+
+## Visualization Suite
+
+The project includes a comprehensive visualization suite for understanding and interpreting model behavior. The visualization components are primarily implemented in `live_visualize.py` and focus on providing insights into state assignments, patterns, and model performance.
+
+### Basic Time Series Visualization
+
+The most fundamental visualization is the time series plot with state assignments:
+
+```python
+def update_plot(self, data, states, trans_probs, loss, losses, state_counts=[], state_changes=None):
+    """Update live plot with new data."""
+    # Plot time series and states
+    for i in range(self.n_features):
+        ax = self.fig.add_subplot(self.n_features + 2, 1, i + 1)
+        ax.plot(data[:, i], label=f'Feature {i+1}')
+        ax.scatter(range(len(states)), data[:, i], c=states, cmap='plasma', marker='x', label='Inferred States')
+```
+
+This visualization shows:
+- Raw time series data for each feature
+- State assignments overlaid as colored markers
+- Current loss value and trend
+- Number of active states
+
+### State Pattern Analysis
+
+The `visualize_state_patterns` method provides deep insights into what patterns each state represents:
+
+```python
+def visualize_state_patterns(self, data=None, states=None, save_path=None):
+    """Create a comprehensive visualization showing what patterns each state represents."""
+    # For each state, calculate and visualize:
+    # - Mean pattern across features
+    # - Standard deviation as shaded area
+    # - Min/max range as error bars
+    # - State frequency and median duration
+```
+
+This visualization helps answer key questions:
+- What data pattern does each state represent?
+- How consistent is each state (variance)?
+- How frequently does each state occur?
+- How long does each state typically last?
+
+### Composite Visualizations
+
+The `create_composite_state_visualization` method combines multiple views into a comprehensive dashboard:
+
+```python
+def create_composite_state_visualization(self, data=None, states=None, save_path=None):
+    """
+    Create a comprehensive visualization that combines:
+    1. Time series data with state coloring
+    2. State sequence visualization
+    3. State pattern summaries
+    4. Transition probabilities between states
+    5. State duration histogram
+    """
+```
+
+This composite view provides a holistic understanding of model behavior in a single visualization, particularly useful for presentations and reports.
+
+### State Evolution Tracking
+
+The system tracks how states evolve over time, including birth, merge, and delete operations:
+
+```python
+def create_state_evolution_plot(self, state_changes, save_path=None):
+    """Create a visualization of state birth, merge, and delete events."""
+    # Plot state count over time
+    # Highlight births, merges, and deletions
+    # Show detailed change counts in stacked bar chart
+```
+
+This visualization helps monitor model complexity:
+- When and why new states are created
+- When similar states are merged
+- When unused states are deleted
+- Overall trend in model complexity
+
+### Learning Curves and Performance Metrics
+
+The `create_learning_curve` method provides insights into model training progress:
+
+```python
+def create_learning_curve(self, losses, state_counts=None, save_path=None):
+    """Create a detailed learning curve visualization for model performance debugging."""
+    # Plot raw and smoothed loss values
+    # Add exponential moving average trend
+    # Mark minimum loss point
+    # Calculate loss reduction percentage
+    # Show correlation between loss and state count
+```
+
+This visualization helps diagnose training issues and assess model convergence.
+
+### Headless Operation
+
+All visualizations support headless operation for server environments:
+
+```python
+# Use non-interactive backend if running in headless mode
+if 'DISPLAY' not in os.environ or not os.environ['DISPLAY']:
+    matplotlib.use('Agg')  # Use non-GUI backend
+
+# Always save the figure, regardless of display mode
+try:
+    self.fig.savefig(f'plots/live_plot_window_{self.window_count}.png', dpi=300)
+    if 'DISPLAY' in os.environ and os.environ['DISPLAY']:
+        plt.pause(0.01)  # Only pause for display if in GUI mode
+except Exception as e:
+    print(f"Warning: Failed to update plot: {e}")
+```
+
+This ensures that visualizations can be generated on headless servers and cloud environments without errors, making the system more robust for production deployments.
+
+---
+
+## Code Duplication Management
+
+The project initially had some code duplication between `hdp_hmm.py` at the root level and `src/model/hdp_hmm.py`. This has been resolved using the following approach:
+
+1. **Core Implementation in src/model/hdp_hmm.py**:
+   - Contains the full implementation of the HDP-HMM model
+   - Includes all methods for inference, state updating, and model persistence
+   - Designed to be used as a module in larger applications
+
+2. **Wrapper in hdp_hmm.py**:
+   - Imports the core implementation from src/model/hdp_hmm.py
+   - Provides backward compatibility for existing code
+   - Maintains the same interface while delegating to the core implementation
+
+This approach reduces maintenance overhead and ensures that improvements to the core algorithm are reflected in all uses of the model. It also provides flexibility for users who want to use the model in different ways:
+
+- For quick experimentation, the root-level files provide a simple interface
+- For integration into larger applications, the src modules provide a more modular approach
+- For customization, developers can extend the base classes in the src modules
+
+Future work should continue this pattern of keeping core implementations in the src modules and providing simplified wrappers at the root level as needed.

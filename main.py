@@ -25,15 +25,14 @@ def main():
     parser = argparse.ArgumentParser(description='Run HDP-HMM on live data')
     parser.add_argument('--no-gui', action='store_true', help='Run without GUI visualization')
     parser.add_argument('--config', type=str, help='Path to config file')
-    parser.add_argument('--max-iterations', type=int, help='Maximum number of iterations to run')
+    parser.add_argument('--max-windows', type=int, default=1000, help='Maximum number of windows to process')
     args = parser.parse_args()
-    
     # Parameters
     n_features = 3
     window_size = 100
     max_states = 20
     sample_interval = 1.0
-    max_iterations = args.max_iterations if args.max_iterations else 1000
+    max_iterations = args.max_windows  # Use the max_windows argument
     model_path = "models/hdp_hmm.pth"
     plots_path = "plots"
     
@@ -52,6 +51,10 @@ def main():
     # Initialize components
     collector = LiveDataCollector(n_features, window_size, sample_interval)
     trainer = LiveHDPHMM(n_features, max_states, lr=0.01, model_path=model_path)
+    
+    # Pre-fill the collector with data so we get a window immediately
+    for _ in range(window_size):
+        collector.collect_window()
     
     # Initialize visualizer if GUI is enabled
     visualizer = None
@@ -116,6 +119,11 @@ def main():
                                 valid_state_counts,
                                 f'plots/learning_curve_window_{window_count}.png'
                             )
+                        
+                        # Create state-specific time series visualizations every 10 windows
+                        if window_count % 10 == 0:
+                            temp_visualizer.current_data = window_data.cpu()  # Store current data
+                            temp_visualizer.visualize_state_time_series(window_data, states)
                         
                         del temp_visualizer
                 

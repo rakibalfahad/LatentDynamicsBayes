@@ -139,6 +139,22 @@ class LiveVisualizer:
         if state_changes and len(state_changes) > 0:
             save_path = f'plots/state_evolution_window_{self.window_count}.png'
             self.create_state_evolution_plot(state_changes, save_path)
+            
+        # Create state pattern visualization every 10 windows
+        if self.window_count % 10 == 0:
+            save_path = f'plots/state_patterns_window_{self.window_count}.png'
+            self.visualize_state_patterns(data, states, save_path)
+            
+            # Also create a composite visualization
+            save_path = f'plots/composite_viz_window_{self.window_count}.png'
+            self.create_composite_state_visualization(data, states, save_path)
+            
+            # Create state-specific time series visualizations
+            self.visualize_state_time_series(data, states)
+            
+            # Create state time series visualization
+            save_path = f'plots/state_time_series_window_{self.window_count}.png'
+            self.visualize_state_time_series(data, states, save_path)
     
     def create_tile_visualization(self):
         """
@@ -605,6 +621,213 @@ class LiveVisualizer:
             # Make sure to close the figure even if there's an error
             plt.close()
     
+    def visualize_state_patterns(self, data=None, states=None, save_path=None):
+        """
+        Create a comprehensive visualization showing what patterns each state represents.
+        
+        Args:
+            data: Optional tensor of shape (window_size, n_features). Uses current_data if None.
+            states: Optional tensor of state assignments. Uses most recent states if None.
+            save_path: Path to save the visualization. If None, generates a default path.
+            
+        This visualization shows:
+        1. Average pattern for each state across all features
+        2. Distribution of data within each state (min/max/std)
+        3. State transition diagram with most common transitions
+        4. State sequence timeline with data overlay
+        """
+        # Use current data if none provided
+        if data is None and self.current_data is not None:
+            data = self.current_data
+        
+        if states is None and self.state_history and len(self.state_history) > 0:
+            states = self.state_history[-1]
+            
+        if data is None or states is None:
+            print("No data or states available for pattern visualization")
+            return
+            
+        # Convert to numpy if needed
+        data_np = data.cpu().numpy() if isinstance(data, torch.Tensor) else data
+        states_np = states.cpu().numpy() if isinstance(states, torch.Tensor) else states
+        
+        # Identify unique states
+        unique_states = np.unique(states_np)
+        n_states = len(unique_states)
+        n_features = data_np.shape[1]
+        
+        # Create figure with multiple subplots
+        fig = plt.figure(figsize=(15, 4 * (n_states + 2)))
+        
+        # 1. First subplot: Full time series with state coloring
+        ax_full = plt.subplot2grid((n_states + 2, 1), (0, 0))
+        
+        # Plot each feature with different line style
+        for f in range(n_features):
+            ax_full.plot(data_np[:, f], '.-', alpha=0.7, label=f'Feature {f+1}')
+            
+        # Add state background coloring
+        import matplotlib.cm as cm
+        cmap = cm.get_cmap('tab10', max(10, n_states))
+        
+        # Create colored background for states
+        for i, state in enumerate(unique_states):
+            mask = states_np == state
+            indices = np.where(mask)[0]
+            if len(indices) > 0:
+                for idx in indices:
+                    ax_full.axvspan(idx-0.5, idx+0.5, alpha=0.2, color=cmap(i))
+                    
+        ax_full.set_title('Time Series with State Assignments')
+        ax_full.legend(loc='upper right')
+        ax_full.set_xlabel('Time')
+        ax_full.set_ylabel('Value')
+        
+        # 2. For each state, show average pattern and variation
+        state_patterns = {}
+        for i, state in enumerate(unique_states):
+            # Extract data segments for this state
+            mask = states_np == state
+            state_data = data_np[mask]
+            
+            # Store patterns for later use
+            state_patterns[state] = state_data
+            
+            # Create subplot for this state
+            ax_state = plt.subplot2grid((n_states + 2, 1), (i + 1, 0))
+            
+            # Skip if no data for this state
+            if len(state_data) == 0:
+                ax_state.text(0.5, 0.5, f'No data for State {state}', 
+                              ha='center', va='center', transform=ax_state.transAxes)
+                continue
+                
+            # Calculate statistics
+            mean_pattern = np.mean(state_data, axis=0)
+            std_pattern = np.std(state_data, axis=0)
+            min_pattern = np.min(state_data, axis=0)
+            max_pattern = np.max(state_data, axis=0)
+            
+            # Plot mean pattern for each feature
+            x = np.arange(n_features)
+            ax_state.plot(x, mean_pattern, 'o-', linewidth=2, label='Mean')
+            
+            # Plot variance as shaded area
+            ax_state.fill_between(x, mean_pattern - std_pattern, mean_pattern + std_pattern, 
+                                 alpha=0.3, label='±1 Std Dev')
+            
+            # Plot min/max as error bars
+            ax_state.errorbar(x, mean_pattern, yerr=[mean_pattern - min_pattern, max_pattern - mean_pattern],
+                             fmt='none', alpha=0.5, label='Min/Max')
+            
+            # Calculate frequency and median duration
+            state_freq = np.sum(mask) / len(states_np)
+            
+            # Find durations of continuous segments
+            durations = []
+            current_run = 0
+            for j in range(len(states_np)):
+                if states_np[j] == state:
+                    current_run += 1
+                elif current_run > 0:
+                    durations.append(current_run)
+                    current_run = 0
+            if current_run > 0:
+                durations.append(current_run)
+                
+            median_duration = np.median(durations) if durations else 0
+            
+            # Add state statistics to title
+            ax_state.set_title(f'State {state} Pattern (Freq: {state_freq:.2f}, Med. Duration: {median_duration:.1f})')
+            ax_state.set_xlabel('Feature')
+            ax_state.set_ylabel('Value')
+            ax_state.set_xticks(x)
+            ax_state.set_xticklabels([f'F{i+1}' for i in range(n_features)])
+            ax_state.legend(loc='upper right')
+            ax_state.grid(True, alpha=0.3)
+            
+            # Color the background with the state color
+            ax_state.set_facecolor(cmap(i, alpha=0.1))
+        
+        # Last subplot: State transition visualization
+        ax_trans = plt.subplot2grid((n_states + 2, 1), (n_states + 1, 0))
+        
+        # Create state transition image
+        transitions = np.zeros((2, len(states_np)-1))
+        for t in range(len(states_np)-1):
+            transitions[0, t] = states_np[t]
+            transitions[1, t] = states_np[t+1]
+            
+        # Display the transitions
+        img = ax_trans.imshow(transitions, aspect='auto', interpolation='none',
+                              cmap=cmap, vmin=0, vmax=max(unique_states))
+        
+        # Add labels
+        ax_trans.set_title('State Transitions Over Time')
+        ax_trans.set_yticks([0, 1])
+        ax_trans.set_yticklabels(['From', 'To'])
+        ax_trans.set_xlabel('Time')
+        
+        # Add colorbar
+        cbar = plt.colorbar(img, ax=ax_trans, orientation='horizontal', pad=0.2)
+        cbar.set_label('State')
+        cbar.set_ticks(unique_states)
+        
+        # Use subplots_adjust for better compatibility
+        plt.subplots_adjust(hspace=0.4, top=0.95, bottom=0.05, left=0.1, right=0.95)
+        
+        # Generate save path if not provided
+        if save_path is None:
+            # Make sure plots directory exists
+            os.makedirs('plots', exist_ok=True)
+            save_path = f'plots/state_patterns_window_{self.window_count}.png'
+        
+        # Calculate state durations
+        durations = []
+        state_labels = []
+        current_state = states_np[0]
+        current_run = 1
+        
+        for t in range(1, len(states_np)):
+            if states_np[t] == current_state:
+                current_run += 1
+            else:
+                durations.append(current_run)
+                state_labels.append(current_state)
+                current_state = states_np[t]
+                current_run = 1
+                
+        # Add the last run
+        if current_run > 0:
+            durations.append(current_run)
+            state_labels.append(current_state)
+            
+        # Convert to numpy arrays
+        durations = np.array(durations)
+        state_labels = np.array(state_labels)
+        
+        # Generate save path if not provided
+        if save_path is None:
+            # Make sure plots directory exists
+            os.makedirs('plots', exist_ok=True)
+            save_path = f'plots/state_patterns_window_{self.window_count}.png'
+        
+        # Generate save path if not provided
+        if save_path is None:
+            # Make sure plots directory exists
+            os.makedirs('plots', exist_ok=True)
+            save_path = f'plots/composite_viz_window_{self.window_count}.png'
+            
+        try:
+            # Save with bbox_inches to ensure all content is captured
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.savefig('plots/latest_composite_viz.png', dpi=300, bbox_inches='tight')
+            print(f"Composite visualization saved to {save_path}")
+        except Exception as e:
+            print(f"Warning: Failed to save composite visualization: {e}")
+        finally:
+            plt.close(fig)
+    
     def close(self):
         """Close the plot."""
         try:
@@ -612,3 +835,374 @@ class LiveVisualizer:
             plt.close(self.fig)
         except Exception as e:
             print(f"Warning when closing visualizer: {e}")
+            
+    def create_composite_state_visualization(self, data=None, states=None, save_path=None):
+        """
+        Create a comprehensive visualization that combines state sequence and patterns.
+        
+        This visualization combines:
+        1. Time series data with state coloring
+        2. State sequence visualization (similar to bnpy)
+        3. State pattern summaries
+        4. Transition probabilities between states
+        
+        Args:
+            data: Optional tensor of shape (window_size, n_features). Uses current_data if None.
+            states: Optional tensor of state assignments. Uses most recent states if None.
+            save_path: Path to save the visualization. If None, generates a default path.
+        """
+        # Use current data if none provided
+        if data is None and self.current_data is not None:
+            data = self.current_data
+        
+        if states is None and self.state_history and len(self.state_history) > 0:
+            states = self.state_history[-1]
+            
+        if data is None or states is None:
+            print("No data or states available for composite visualization")
+            return
+            
+        # Convert to numpy if needed
+        data_np = data.cpu().numpy() if isinstance(data, torch.Tensor) else data
+        states_np = states.cpu().numpy() if isinstance(states, torch.Tensor) else states
+        
+        # Identify unique states
+        unique_states = np.unique(states_np)
+        n_states = len(unique_states)
+        n_features = data_np.shape[1]
+        
+        # Create color map
+        import matplotlib.cm as cm
+        cmap = cm.get_cmap('tab10', max(10, n_states))
+        
+        # Create a large figure with multiple subplots
+        fig = plt.figure(figsize=(15, 12))
+        
+        # Set up subplots manually
+        ax_time = plt.subplot2grid((7, 3), (0, 0), colspan=3, rowspan=2)
+        ax_seq = plt.subplot2grid((7, 3), (2, 0), colspan=3, rowspan=1)
+        
+        # Pattern plots
+        ax_patterns = []
+        for f in range(min(n_features, 3)):  # Limit to 3 features to avoid crowding
+            ax = plt.subplot2grid((7, 3), (3, f), rowspan=2)
+            ax_patterns.append(ax)
+            
+        # Transition and duration plots
+        ax_trans = plt.subplot2grid((7, 3), (5, 0), colspan=2, rowspan=2)
+        ax_dur = plt.subplot2grid((7, 3), (5, 2), rowspan=2)
+        
+        # 1. Top panel: Time series with state coloring
+        # Plot each feature
+        for f in range(n_features):
+            ax_time.plot(data_np[:, f], '.-', alpha=0.7, label=f'Feature {f+1}')
+            
+        # Add state background coloring
+        for t in range(len(states_np)):
+            state_idx = np.where(unique_states == states_np[t])[0][0]
+            ax_time.axvspan(t-0.5, t+0.5, alpha=0.2, color=cmap(state_idx))
+        
+        ax_time.set_title('Time Series with State Assignments')
+        ax_time.legend(loc='upper right')
+        ax_time.set_ylabel('Value')
+        ax_time.grid(True, alpha=0.3)
+        
+        # 2. State sequence visualization (similar to bnpy)
+        # Create state image by repeating states
+        img_height = 50  # Height of the state image
+        state_img = np.zeros((img_height, len(states_np)))
+        
+        # Map states to consecutive indices for better visualization
+        state_map = {state: i for i, state in enumerate(unique_states)}
+        for t in range(len(states_np)):
+            state_img[:, t] = state_map[states_np[t]]
+            
+        # Display the state image
+        img = ax_seq.imshow(state_img, aspect='auto', interpolation='nearest',
+                           vmin=-0.5, vmax=len(unique_states)-0.5, cmap=cmap)
+        ax_seq.set_yticks([])  # Hide y-axis ticks
+        ax_seq.set_title('State Sequence')
+        
+        # Add colorbar for states
+        cbar = plt.colorbar(img, ax=ax_seq, orientation='horizontal', pad=0.2,
+                           ticks=range(len(unique_states)))
+        cbar.set_label('State')
+        cbar.set_ticklabels(unique_states)
+        
+        # 3. State patterns: one panel per feature
+        for f in range(min(n_features, 3)):  # Limit to 3 features to avoid crowding
+            ax = ax_patterns[f]
+            
+            # Plot patterns for each state for this feature
+            for i, state in enumerate(unique_states):
+                # Get data for this state
+                mask = states_np == state
+                if np.sum(mask) == 0:
+                    continue
+                    
+                state_data = data_np[mask, f]
+                
+                # Calculate statistics
+                mean_val = np.mean(state_data)
+                std_val = np.std(state_data)
+                
+                # Plot as error bar
+                ax.errorbar([i], [mean_val], yerr=[std_val], fmt='o', 
+                           color=cmap(i), capsize=5, label=f'State {state}')
+                
+                # Add a small horizontal jitter for individual points
+                jitter = np.random.normal(0, 0.1, size=len(state_data))
+                ax.scatter(i + jitter, state_data, color=cmap(i), alpha=0.3, s=20)
+                
+            ax.set_title(f'Feature {f+1} by State')
+            ax.set_xlabel('State')
+            ax.set_ylabel('Value')
+            ax.set_xticks(range(len(unique_states)))
+            ax.set_xticklabels(unique_states)
+            ax.grid(True, alpha=0.3)
+        
+        # 4. Transition probability heatmap
+        # Calculate transition matrix
+        state_indices = [np.where(unique_states == s)[0][0] for s in states_np]
+        trans_matrix = np.zeros((n_states, n_states))
+        for t in range(len(state_indices)-1):
+            trans_matrix[state_indices[t], state_indices[t+1]] += 1
+            
+        # Normalize by row sums
+        row_sums = trans_matrix.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1  # Avoid division by zero
+        trans_matrix = trans_matrix / row_sums
+        
+        sns.heatmap(trans_matrix, annot=True, cmap='Blues', ax=ax_trans,
+                   xticklabels=unique_states, yticklabels=unique_states)
+        ax_trans.set_title('State Transition Probabilities')
+        ax_trans.set_xlabel('To State')
+        ax_trans.set_ylabel('From State')
+        
+        # 5. State duration histogram
+        # Calculate state durations
+        durations = []
+        state_labels = []
+        current_state = states_np[0]
+        current_run = 1
+        
+        for t in range(1, len(states_np)):
+            if states_np[t] == current_state:
+                current_run += 1
+            else:
+                durations.append(current_run)
+                state_labels.append(current_state)
+                current_state = states_np[t]
+                current_run = 1
+                
+        # Add the last run
+        if current_run > 0:
+            durations.append(current_run)
+            state_labels.append(current_state)
+            
+        # Convert to numpy arrays
+        durations = np.array(durations)
+        state_labels = np.array(state_labels)
+        
+        # Plot histogram by state
+        for i, state in enumerate(unique_states):
+            state_durations = durations[state_labels == state]
+            if len(state_durations) > 0:
+                ax_dur.hist(state_durations, alpha=0.7, color=cmap(i), 
+                           label=f'State {state}', bins=range(1, max(durations)+2))
+                
+        ax_dur.set_title('State Duration Histogram')
+        ax_dur.set_xlabel('Duration (time steps)')
+        ax_dur.set_ylabel('Frequency')
+        ax_dur.legend()
+        ax_dur.grid(True, alpha=0.3)
+        
+        # Adjust layout
+        plt.subplots_adjust(hspace=0.4, wspace=0.3, top=0.95, bottom=0.05, left=0.1, right=0.95)
+        
+        # Generate save path if not provided
+        if save_path is None:
+            # Make sure plots directory exists
+            os.makedirs('plots', exist_ok=True)
+            save_path = f'plots/composite_viz_window_{self.window_count}.png'
+            
+        try:
+            # Save with bbox_inches to ensure all content is captured
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.savefig('plots/latest_composite_viz.png', dpi=300, bbox_inches='tight')
+            print(f"Composite visualization saved to {save_path}")
+        except Exception as e:
+            print(f"Warning: Failed to save composite visualization: {e}")
+        finally:
+            plt.close(fig)
+    
+    def visualize_state_time_series(self, data=None, states=None, save_path=None):
+        """
+        Create visualizations showing time series data for each state separately.
+        
+        This method:
+        1. Groups data points by state
+        2. For each state, shows the time series of all features
+        3. Highlights where each state appears in the full sequence
+        
+        Args:
+            data: Optional tensor of shape (window_size, n_features). Uses current_data if None.
+            states: Optional tensor of state assignments. Uses most recent states if None.
+            save_path: Path to save the visualization. If None, generates a default path.
+        """
+        # Use current data if none provided
+        if data is None and self.current_data is not None:
+            data = self.current_data
+        
+        if states is None and self.state_history and len(self.state_history) > 0:
+            states = self.state_history[-1]
+            
+        if data is None or states is None:
+            print("No data or states available for state time series visualization")
+            return
+            
+        # Convert to numpy if needed
+        data_np = data.cpu().numpy() if isinstance(data, torch.Tensor) else data
+        states_np = states.cpu().numpy() if isinstance(states, torch.Tensor) else states
+        
+        # Identify unique states
+        unique_states = np.unique(states_np)
+        n_states = len(unique_states)
+        n_features = data_np.shape[1]
+        
+        # Create a separate figure for each state
+        for state in unique_states:
+            # Create figure with subplots
+            fig, axes = plt.subplots(n_features + 1, 1, figsize=(12, 3 * (n_features + 1)))
+            
+            # First subplot: State mask (where this state occurs in the sequence)
+            state_mask = states_np == state
+            axes[0].plot(np.arange(len(states_np)), state_mask.astype(int), 'r-', linewidth=2)
+            axes[0].fill_between(np.arange(len(states_np)), 0, state_mask.astype(int), color='r', alpha=0.3)
+            axes[0].set_ylim(-0.1, 1.1)
+            axes[0].set_title(f'State {state} Occurrences')
+            axes[0].set_ylabel('Active')
+            axes[0].set_yticks([0, 1])
+            axes[0].set_yticklabels(['No', 'Yes'])
+            
+            # Calculate statistics for this state
+            mask_indices = np.where(state_mask)[0]
+            state_data = data_np[state_mask]
+            
+            # Skip if no data for this state
+            if len(state_data) == 0:
+                axes[0].text(0.5, 0.5, "No data for this state", 
+                            transform=axes[0].transAxes, ha='center')
+                continue
+                
+            # Calculate basic statistics
+            state_mean = np.mean(state_data, axis=0)
+            state_std = np.std(state_data, axis=0)
+            
+            # For each feature, plot time series and statistics
+            for f in range(n_features):
+                ax = axes[f + 1]
+                
+                # Plot full time series in light gray
+                ax.plot(np.arange(len(data_np)), data_np[:, f], color='gray', alpha=0.3, label='Full Series')
+                
+                # Highlight the segments belonging to this state
+                for start_idx in mask_indices:
+                    ax.axvspan(start_idx - 0.5, start_idx + 0.5, color='red', alpha=0.2)
+                    
+                # Plot points belonging to this state
+                ax.scatter(mask_indices, data_np[state_mask, f], color='red', label=f'State {state}', zorder=10)
+                
+                # Connect consecutive points
+                if len(mask_indices) > 1:
+                    for i in range(len(mask_indices) - 1):
+                        if mask_indices[i+1] - mask_indices[i] == 1:  # Only connect consecutive points
+                            ax.plot(mask_indices[i:i+2], data_np[mask_indices[i:i+2], f], 'r-', linewidth=1.5)
+                
+                # Add mean and standard deviation lines
+                ax.axhline(state_mean[f], color='darkred', linestyle='--', 
+                          label=f'Mean: {state_mean[f]:.2f}')
+                ax.axhline(state_mean[f] + state_std[f], color='darkred', linestyle=':', alpha=0.7,
+                          label=f'±1 Std: {state_std[f]:.2f}')
+                ax.axhline(state_mean[f] - state_std[f], color='darkred', linestyle=':', alpha=0.7)
+                
+                ax.set_title(f'Feature {f+1} for State {state}')
+                ax.set_ylabel('Value')
+                ax.legend(loc='upper right')
+                ax.grid(True, linestyle='--', alpha=0.7)
+            
+            # Add overall title
+            plt.suptitle(f'State {state} Time Series Analysis (Found in {np.sum(state_mask)} positions)', 
+                        fontsize=16, y=0.98)
+            
+            # Adjust layout
+            plt.subplots_adjust(hspace=0.4, top=0.92)
+            
+            # Generate save path if not provided
+            if save_path is None:
+                os.makedirs('plots/state_time_series', exist_ok=True)
+                state_save_path = f'plots/state_time_series/state_{state}_window_{self.window_count}.png'
+            else:
+                # Modify save_path to include state number
+                dir_name = os.path.dirname(save_path)
+                file_name = os.path.basename(save_path)
+                os.makedirs(dir_name, exist_ok=True)
+                name_parts = os.path.splitext(file_name)
+                state_save_path = os.path.join(dir_name, f"{name_parts[0]}_state_{state}{name_parts[1]}")
+            
+            # Save the figure
+            try:
+                plt.savefig(state_save_path, dpi=300, bbox_inches='tight')
+                print(f"State {state} time series saved to {state_save_path}")
+            except Exception as e:
+                print(f"Warning: Failed to save state time series for state {state}: {e}")
+            finally:
+                plt.close(fig)
+        
+        # Create a summary figure with all states
+        try:
+            # Create a figure showing where each state appears across the time series
+            plt.figure(figsize=(12, 8))
+            
+            # Main subplot with data
+            plt.subplot(211)
+            for f in range(n_features):
+                plt.plot(data_np[:, f], label=f'Feature {f+1}', alpha=0.8)
+            
+            plt.title('Time Series with State Assignments')
+            plt.ylabel('Value')
+            plt.legend(loc='upper right')
+            plt.grid(True, alpha=0.3)
+            
+            # State assignment subplot
+            plt.subplot(212)
+            
+            # Create a colormap for states
+            import matplotlib.cm as cm
+            cmap = cm.get_cmap('tab10', max(10, n_states))
+            
+            # For each time point, add a colored segment for its state
+            for t in range(len(states_np)):
+                state_idx = np.where(unique_states == states_np[t])[0][0]
+                plt.axvspan(t-0.5, t+0.5, color=cmap(state_idx), alpha=0.7)
+            
+            # Add legend for states
+            for i, state in enumerate(unique_states):
+                state_mask = states_np == state
+                count = np.sum(state_mask)
+                plt.plot([], [], color=cmap(i), label=f'State {state} ({count} points)')
+            
+            plt.yticks([])
+            plt.xlabel('Time')
+            plt.title('State Assignments')
+            plt.legend(loc='upper right')
+            
+            # Save the summary figure
+            os.makedirs('plots/state_time_series', exist_ok=True)
+            summary_path = f'plots/state_time_series/all_states_summary_window_{self.window_count}.png'
+            plt.savefig(summary_path, dpi=300, bbox_inches='tight')
+            print(f"State time series summary saved to {summary_path}")
+        except Exception as e:
+            print(f"Warning: Failed to save state time series summary: {e}")
+        finally:
+            plt.close()

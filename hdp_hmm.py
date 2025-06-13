@@ -1,11 +1,21 @@
-import torch
-import torch.nn as nn
-import torch.distributions as dist
+"""
+This module provides a wrapper for the HDPHMM class to maintain backward compatibility.
+The actual implementation is in src/model/hdp_hmm.py.
+"""
 
-class HDPHMM(nn.Module):
+import torch
+from src.model.hdp_hmm import HDPHMM as BaseHDPHMM
+
+class HDPHMM(BaseHDPHMM):
+    """
+    HDP-HMM with stick-breaking construction.
+    
+    This class inherits from the base implementation in src/model/hdp_hmm.py
+    and maintains backward compatibility with the original interface.
+    """
     def __init__(self, n_features, max_states=20, alpha=1.0, gamma=1.0):
         """
-        HDP-HMM with stick-breaking construction.
+        Initialize the HDP-HMM with stick-breaking construction.
         
         Args:
             n_features (int): Number of features
@@ -13,89 +23,29 @@ class HDPHMM(nn.Module):
             alpha (float): Concentration parameter for transition Dirichlet process
             gamma (float): Concentration parameter for top-level Dirichlet process
         """
-        super(HDPHMM, self).__init__()
-        self.n_features = n_features
-        self.max_states = max_states
-        self.current_states = max_states  # Track current number of active states
-        self.alpha = alpha
-        self.gamma = gamma
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        super(HDPHMM, self).__init__(n_features, max_states, alpha, gamma, device)
         
-        # Parameters for stick-breaking process
-        self.beta_logits = nn.Parameter(torch.randn(max_states))
-        self.pi_logits = nn.Parameter(torch.randn(max_states, max_states))
-        
-        # Emission parameters (Gaussian)
-        self.means = nn.Parameter(torch.randn(max_states, n_features))
-        self.log_vars = nn.Parameter(torch.zeros(max_states, n_features))
-        
-    def stick_breaking(self, logits):
-        """Compute stick-breaking weights."""
-        betas = torch.sigmoid(logits)
-        beta_cumprod = torch.cumprod(1 - betas, dim=0)
-        weights = betas * torch.cat([torch.ones(1, device=self.device), beta_cumprod[:-1]])
-        return weights
+        # For backward compatibility
+        self.current_states = max_states
     
-    def forward_backward(self, observations):
+    def update_states(self, observations):
         """
-        Forward-backward algorithm for inference.
+        Dynamically adjust the number of states with birth, merge, and delete mechanisms.
         
         Args:
             observations: Tensor of shape (seq_length, n_features)
-        
+            
         Returns:
-            alpha: Forward probabilities
-            beta: Backward probabilities
-            log_likelihood: Log likelihood of observations
+            tuple: (int: New number of states, dict: State change information)
         """
-        T = observations.shape[0]
-        beta_weights = self.stick_breaking(self.beta_logits).clone()  # Clone to avoid inplace
-        trans_probs = torch.softmax(self.pi_logits, dim=1).clone()  # Clone to avoid inplace
+        # Call the base implementation
+        result = super().update_states(observations)
         
-        # Emission probabilities (Gaussian)
-        emission_probs = torch.stack([
-            dist.MultivariateNormal(
-                self.means[k],
-                covariance_matrix=torch.diag(torch.exp(self.log_vars[k]) + 1e-6)
-            ).log_prob(observations)
-            for k in range(self.current_states)
-        ], dim=1).clone()  # Shape: (T, current_states)
+        # For backward compatibility, update current_states
+        self.current_states = self.n_active_states
         
-        # Forward pass
-        alpha = torch.zeros(T, self.current_states, device=self.device)
-        alpha_t = (beta_weights[:self.current_states] * torch.exp(emission_probs[0])).clone()
-        alpha[0] = alpha_t / (alpha_t.sum() + 1e-10)  # New tensor
-        
-        for t in range(1, T):
-            matmul_result = torch.matmul(alpha[t-1].clone(), trans_probs[:self.current_states, :self.current_states])  # Clone input
-            alpha_t = (matmul_result * torch.exp(emission_probs[t])).clone()
-            alpha[t] = alpha_t / (alpha_t.sum() + 1e-10)  # New tensor
-        
-        # Backward pass
-        beta = torch.ones(T, self.current_states, device=self.device)
-        for t in range(T-2, -1, -1):
-            beta_t = torch.matmul(trans_probs[:self.current_states, :self.current_states], 
-                                 (beta[t+1].clone() * torch.exp(emission_probs[t+1]))).clone()
-            beta[t] = beta_t / (beta_t.sum() + 1e-10)  # New tensor
-        
-        # Log likelihood
-        log_likelihood = torch.log(alpha[-1].sum() + 1e-10)
-        
-        return alpha, beta, log_likelihood
-    
-    def infer_states(self, observations):
-        """Infer most likely states using Viterbi algorithm."""
-        T = observations.shape[0]
-        beta_weights = self.stick_breaking(self.beta_logits).clone()
-        trans_probs = torch.softmax(self.pi_logits, dim=1).clone()
-        
-        emission_probs = torch.stack([
-            dist.MultivariateNormal(
-                self.means[k],
-                covariance_matrix=torch.diag(torch.exp(self.log_vars[k]) + 1e-6)
-            ).log_prob(observations)
-            for k in range(self.current_states)
-        ], dim=1).clone()
+        return result
         
         viterbi = torch.zeros(T, self.current_states, device=self.device)
         ptr = torch.zeros(T, self.current_states, dtype=torch.long, device=self.device)
