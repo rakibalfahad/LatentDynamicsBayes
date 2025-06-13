@@ -38,12 +38,16 @@ LatentDynamicsBayes/
 │   ├── hdp_hmm.pth          # Trained model
 │   └── hdp_hmm_checkpoint.pth # Training checkpoint
 ├── plots/                   # Generated visualizations
-│   ├── live_plot_*.png      # Live time series plots
-│   ├── state_patterns_*.png # State pattern visualizations
-│   ├── state_time_series/   # State-specific time series analysis
-│   ├── state_evolution_*.png # State change tracking
-│   ├── learning_curve_*.png # Training progress
-│   └── composite_viz_*.png  # Combined visualizations
+│   ├── live_plot/           # Live time series plots subdirectory
+│   ├── state_patterns/      # State pattern visualizations subdirectory
+│   ├── state_time_series/   # State-specific time series analysis subdirectory
+│   ├── state_evolution/     # State change tracking subdirectory
+│   ├── learning_curve/      # Training progress subdirectory
+│   ├── composite_viz/       # Combined visualizations subdirectory
+│   ├── state_sequence/      # State sequence visualizations subdirectory
+│   ├── state_tiles/         # State tile visualizations subdirectory
+│   ├── transition_matrix/   # Transition probability matrices subdirectory
+│   └── *_latest.png         # Latest plots kept in the main directory
 └── src/                     # Source code modules
     ├── data/                # Data processing
     │   ├── collector.py     # Data collection utilities
@@ -78,13 +82,23 @@ pip install -r requirements.txt
 
 ## Usage Examples
 
-### Basic Usage
+### Basic Usage (Live Mode)
 
-Run the model with default settings:
+Run the model with default settings using synthetic data:
 
 ```bash
 python main.py
 ```
+
+### Offline Mode with CSV Files
+
+Process data from CSV files stored in a directory:
+
+```bash
+python main.py --data-dir data --window-size 50 --n-features 3
+```
+
+Each CSV file should have columns representing features and rows representing time steps. The files will be processed in alphabetical order. Multiple CSV files can be used and will be processed sequentially.
 
 ### Quick Demo
 
@@ -96,7 +110,7 @@ python demo.py
 
 ### Using Real System Metrics
 
-To use real system metrics instead of simulated data:
+To use real system metrics instead of simulated data (live mode):
 
 ```bash
 python main.py --use-real
@@ -116,6 +130,20 @@ Specify a custom configuration file:
 
 ```bash
 python main.py --config my_config.json
+```
+
+### Command Line Arguments
+
+The following command-line arguments are available:
+
+```
+--no-gui           Run without GUI visualization
+--config CONFIG    Path to config file
+--max-windows N    Maximum number of windows to process (default: 1000)
+--data-dir DIR     Directory containing CSV files for offline processing
+--window-size N    Size of sliding window (default: 100)
+--stride N         Stride for sliding window in offline mode (default: window_size)
+--n-features N     Number of features in the data (default: 3)
 ```
 
 Install the required packages:
@@ -140,6 +168,27 @@ Ensure a CUDA-compatible GPU for acceleration (the code falls back to CPU if una
 - **Visualization**: The interactive plot updates every `sample_interval` seconds. Adjust `window_size` and `sample_interval` based on your system's data rate.
 - **Model Persistence**: The model is saved periodically and on exit, enabling resumption or fine-tuning.
 - **Scalability**: For high-frequency data, consider increasing the `sample_interval` or reducing `max_states` to improve performance.
+
+## Plot Organization
+
+The visualizations are organized to maintain a clean and efficient directory structure:
+
+1. **Main Directory Plots** - Only the most important plots are kept in the main `plots/` directory:
+   - **Latest plots** (e.g., `learning_curve_latest.png`) - Always show the most recent state
+   - **Final plots** (e.g., `final_state_evolution.png`) - Created at the end of a run
+
+2. **Subdirectories** - All intermediate plots are organized into type-specific subdirectories:
+   - `plots/live_plot/` - Time series with state assignments for each window
+   - `plots/state_patterns/` - Patterns representing each state
+   - `plots/state_time_series/` - Detailed time series for each state
+   - `plots/state_evolution/` - Tracking of state changes (birth, merge, delete)
+   - `plots/learning_curve/` - Model learning progress
+   - `plots/composite_viz/` - Combined multi-panel visualizations
+   - `plots/state_sequence/` - State sequence visualizations
+   - `plots/state_tiles/` - Tile visualizations of state assignments
+   - `plots/transition_matrix/` - Transition probability matrices
+
+This organization ensures that the main directory remains uncluttered while maintaining a complete history of visualizations for analysis. You can review the latest state at a glance in the main directory, or explore the full history in the subdirectories.
 
 ## Code Organization
 

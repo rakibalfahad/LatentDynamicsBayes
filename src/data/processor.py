@@ -47,3 +47,12 @@ class LiveDataCollector:
             buffer_tensor = torch.from_numpy(buffer_array).float().to(self.device)
             return buffer_tensor
         return None
+    
+    def get_window(self):
+        """Get the current window without adding a new sample."""
+        if len(self.buffer) == self.window_size:
+            # Convert buffer to a single NumPy array, then to tensor
+            buffer_array = np.stack(self.buffer)  # Stack into (window_size, n_features)
+            buffer_tensor = torch.from_numpy(buffer_array).float().to(self.device)
+            return buffer_tensor
+        return None

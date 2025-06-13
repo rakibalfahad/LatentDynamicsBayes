@@ -23,29 +23,37 @@ This document provides a detailed explanation of the Hierarchical Dirichlet Proc
 
 4. [Live Streaming Architecture](#live-streaming-architecture)
    - [Data Collection](#data-collection)
+   - [Offline Data Processing](#offline-data-processing)
    - [Incremental Training](#incremental-training)
    - [Real-time Visualization](#real-time-visualization)
    - [State Evolution Tracking](#state-evolution-tracking)
 
-5. [Visualization Suite](#visualization-suite)
+5. [Offline CSV Processing](#offline-csv-processing)
+   - [CSVDataProcessor Implementation](#csvdataprocessor-implementation)
+   - [Integration with Main Pipeline](#integration-with-main-pipeline)
+   - [Windowing and Sequencing](#windowing-and-sequencing)
+   - [Usage and Configuration](#usage-and-configuration)
+
+6. [Visualization Suite](#visualization-suite)
    - [Basic Time Series Visualization](#basic-time-series-visualization)
    - [State Pattern Analysis](#state-pattern-analysis)
    - [Composite Visualizations](#composite-visualizations)
    - [Learning Curves and Performance Metrics](#learning-curves-and-performance-metrics)
    - [Headless Operation](#headless-operation)
 
-6. [Code Structure](#code-structure)
+7. [Code Structure](#code-structure)
    - [hdp_hmm.py](#hdp_hmmpy)
    - [trainer.py](#trainerpy)
    - [live_visualize.py](#live_visualizepy)
    - [main.py](#mainpy)
+   - [csv_processor.py](#csv_processorpy)
 
-6. [Advanced Topics](#advanced-topics)
+8. [Advanced Topics](#advanced-topics)
    - [Computational Efficiency](#computational-efficiency)
    - [Numerical Stability](#numerical-stability)
    - [Extension Points](#extension-points)
 
-7. [References](#references)
+9. [References](#references)
 
 ---
 
@@ -688,6 +696,22 @@ The entry point for running the system:
 - Main processing loop
 - Error handling and logging
 
+### csv_processor.py
+
+Handles offline processing of CSV files:
+
+- `CSVDataProcessor` class for batch processing
+- Loading and parsing multiple CSV files
+- Implementing sliding window functionality
+- Managing data across file boundaries
+- Integration with the main HDP-HMM pipeline
+
+Key methods:
+- `load_csv_files`: Discovers and loads CSV files from a directory
+- `get_next_window`: Retrieves the next window of data with proper handling of file transitions
+- `get_total_windows`: Calculates the total number of windows for progress tracking
+- `reset`: Resets the processor to start from the beginning
+
 ---
 
 ## Advanced Topics
@@ -841,48 +865,272 @@ def create_learning_curve(self, losses, state_counts=None, save_path=None):
     # Show correlation between loss and state count
 ```
 
-This visualization helps diagnose training issues and assess model convergence.
+Features of the learning curve visualization:
 
-### Headless Operation
+1. **Multiple Smoothing Methods**: Raw values, window smoothing, and exponential moving average
+2. **Adaptive Window Size**: Automatically adjusts smoothing window based on data length
+3. **Progress Indicators**: Displays loss reduction percentage and min/max points
+4. **State Correlation**: Shows correlation between loss and number of states
+5. **Log Scale Option**: Automatically adds log scale inset for wide-range loss values
+6. **Dynamic Saving**: Creates both timestamped and latest versions for easy reference
 
-All visualizations support headless operation for server environments:
-
-```python
-# Use non-interactive backend if running in headless mode
-if 'DISPLAY' not in os.environ or not os.environ['DISPLAY']:
-    matplotlib.use('Agg')  # Use non-GUI backend
-
-# Always save the figure, regardless of display mode
-try:
-    self.fig.savefig(f'plots/live_plot_window_{self.window_count}.png', dpi=300)
-    if 'DISPLAY' in os.environ and os.environ['DISPLAY']:
-        plt.pause(0.01)  # Only pause for display if in GUI mode
-except Exception as e:
-    print(f"Warning: Failed to update plot: {e}")
-```
-
-This ensures that visualizations can be generated on headless servers and cloud environments without errors, making the system more robust for production deployments.
+This comprehensive visualization system provides valuable insights into how the model's state space evolves during training, helping users understand and debug the dynamic state management process.
 
 ---
 
-## Code Duplication Management
+## Offline CSV Processing
 
-The project initially had some code duplication between `hdp_hmm.py` at the root level and `src/model/hdp_hmm.py`. This has been resolved using the following approach:
+In addition to live streaming, the system supports offline processing of CSV files:
 
-1. **Core Implementation in src/model/hdp_hmm.py**:
-   - Contains the full implementation of the HDP-HMM model
-   - Includes all methods for inference, state updating, and model persistence
-   - Designed to be used as a module in larger applications
+```python
+class CSVDataProcessor:
+    """
+    Process CSV files for offline training of the HDP-HMM model.
+    
+    Each CSV file should have columns representing features, and rows representing time steps.
+    """
+```
 
-2. **Wrapper in hdp_hmm.py**:
-   - Imports the core implementation from src/model/hdp_hmm.py
-   - Provides backward compatibility for existing code
-   - Maintains the same interface while delegating to the core implementation
+The `CSVDataProcessor` class provides the following capabilities:
 
-This approach reduces maintenance overhead and ensures that improvements to the core algorithm are reflected in all uses of the model. It also provides flexibility for users who want to use the model in different ways:
+- Processes multiple CSV files in sequence
+- Extracts features and creates sliding windows for model training
+- Handles different window sizes and stride lengths
+- Provides a uniform interface with the live data collector
 
-- For quick experimentation, the root-level files provide a simple interface
-- For integration into larger applications, the src modules provide a more modular approach
-- For customization, developers can extend the base classes in the src modules
+This allows the system to work with historical data stored in CSV format, which is useful for:
 
-Future work should continue this pattern of keeping core implementations in the src modules and providing simplified wrappers at the root level as needed.
+1. **Retrospective Analysis**: Analyzing past data to discover patterns
+2. **Model Development**: Testing and refining models on benchmark datasets
+3. **Batch Processing**: Running the model on large datasets overnight or in a scheduled job
+
+The implementation automatically detects the number of features from the CSV files and processes them in alphabetical order:
+
+```python
+def load_csv_files(self):
+    """Load all CSV files from the data directory."""
+    csv_pattern = os.path.join(self.data_dir, "*.csv")
+    self.csv_files = sorted(glob.glob(csv_pattern))
+    
+    # Load the first file to determine the number of features
+    first_df = pd.read_csv(self.csv_files[0])
+    self.n_features = first_df.shape[1]
+```
+
+The sliding window approach allows for flexible processing with configurable window sizes and strides:
+
+```python
+def get_next_window(self):
+    """Get the next window of data from the CSV files."""
+    # Extract the window
+    window_data = self.current_data[self.current_position:self.current_position + self.window_size]
+
+    # Move to the next position based on stride
+    self.current_position += self.stride
+```
+
+The processor also handles the transition between files automatically, ensuring a continuous stream of windows even when the data spans multiple CSV files:
+
+```python
+# Check if we need to load a new file
+while self.current_position + self.window_size > len(self.current_data):
+    self.current_file_idx += 1
+    if self.current_file_idx >= len(self.csv_files):
+        # No more files
+        logger.info("Reached the end of all CSV files")
+        return None
+    
+    # Load the next file
+    logger.info(f"Loading next file: {self.csv_files[self.current_file_idx]}")
+    self.current_data = pd.read_csv(self.csv_files[self.current_file_idx]).values
+    self.current_position = 0
+```
+
+### Usage and Configuration
+
+The offline CSV processing mode can be invoked with the following command:
+
+```bash
+python main.py --data-dir data --window-size 50 --stride 25 --n-features 3
+```
+
+Each CSV file should have the following format:
+- Each column represents a feature
+- Each row represents a time step
+- The number of columns must be consistent across all files
+- No header row is required (first row is treated as data)
+
+For example:
+
+```
+0.5,1.2,0.8
+0.6,1.3,0.7
+0.7,1.4,0.6
+...
+```
+
+The system will process all CSV files in alphabetical order, treating them as a continuous sequence of time series data.
+
+#### Benefits of Offline Processing
+
+The offline processing mode offers several advantages:
+
+1. **Historical Analysis**: Process previously collected data to discover patterns and states
+2. **Benchmarking**: Compare model performance across different datasets
+3. **Parameter Tuning**: Test different window sizes, stride values, and model parameters
+4. **Batch Processing**: Process large datasets overnight or as scheduled jobs
+5. **Reproducibility**: Run the same analysis multiple times on fixed data
+
+#### Comparison between Live and Offline Modes
+
+| Aspect | Live Mode | Offline Mode |
+|--------|-----------|--------------|
+| Data Source | Real-time streams or simulated data | CSV files in a specified directory |
+| Processing Speed | Limited by data collection rate | As fast as the processor can handle |
+| Window Management | Fixed window size | Configurable window size and stride |
+| Feature Detection | Fixed number of features | Automatically detected from CSV files |
+| Initialization | Requires pre-filling the window | Directly loads from CSV files |
+| End Condition | Manual stop or max windows | End of all CSV files or max windows |
+| Applicable Use Cases | Real-time monitoring, online learning | Historical analysis, model development |
+| Visualization | Real-time updates | Generated at intervals and end of processing |
+
+#### Example Use Cases
+
+1. **System Monitoring with Live Mode**:
+   ```bash
+   python main.py --window-size 100 --n-features 3
+   ```
+   This setup monitors system metrics in real-time, continuously updating the model as new data arrives.
+
+2. **Historical Data Analysis with Offline Mode**:
+   ```bash
+   python main.py --data-dir historical_data --window-size 50 --stride 25
+   ```
+   This processes historical data stored in CSV files to discover patterns and states.
+
+3. **Benchmark Testing with Offline Mode**:
+   ```bash
+   python main.py --data-dir benchmark_dataset --window-size 100 --no-gui
+   ```
+   This runs the model on a standard benchmark dataset without GUI updates for faster processing.
+
+4. **Model Parameter Tuning with Offline Mode**:
+   ```bash
+   for ws in 50 100 200; do
+     for stride in 25 50 100; do
+       python main.py --data-dir data --window-size $ws --stride $stride --max-windows 20
+     done
+   done
+   ```
+   This script tests different window sizes and strides on the same dataset for parameter optimization.
+
+The dual-mode capability makes the HDP-HMM implementation flexible for both real-time and batch processing applications while maintaining consistent visualization and analysis capabilities.
+
+---
+
+## Visualization Suite
+
+The project includes a comprehensive visualization suite for understanding and interpreting model behavior. The visualization components are primarily implemented in `live_visualize.py` and focus on providing insights into state assignments, patterns, and model performance.
+
+### Basic Time Series Visualization
+
+The most fundamental visualization is the time series plot with state assignments:
+
+```python
+def update_plot(self, data, states, trans_probs, loss, losses, state_counts=[], state_changes=None):
+    """Update live plot with new data."""
+    # Plot time series and states
+    for i in range(self.n_features):
+        ax = self.fig.add_subplot(self.n_features + 2, 1, i + 1)
+        ax.plot(data[:, i], label=f'Feature {i+1}')
+        ax.scatter(range(len(states)), data[:, i], c=states, cmap='plasma', marker='x', label='Inferred States')
+```
+
+This visualization shows:
+- Raw time series data for each feature
+- State assignments overlaid as colored markers
+- Current loss value and trend
+- Number of active states
+
+### State Pattern Analysis
+
+The `visualize_state_patterns` method provides deep insights into what patterns each state represents:
+
+```python
+def visualize_state_patterns(self, data=None, states=None, save_path=None):
+    """Create a comprehensive visualization showing what patterns each state represents."""
+    # For each state, calculate and visualize:
+    # - Mean pattern across features
+    # - Standard deviation as shaded area
+    # - Min/max range as error bars
+    # - State frequency and median duration
+```
+
+This visualization helps answer key questions:
+- What data pattern does each state represent?
+- How consistent is each state (variance)?
+- How frequently does each state occur?
+- How long does each state typically last?
+
+### Composite Visualizations
+
+The `create_composite_state_visualization` method combines multiple views into a comprehensive dashboard:
+
+```python
+def create_composite_state_visualization(self, data=None, states=None, save_path=None):
+    """
+    Create a comprehensive visualization that combines:
+    1. Time series data with state coloring
+    2. State sequence visualization
+    3. State pattern summaries
+    4. Transition probabilities between states
+    5. State duration histogram
+    """
+```
+
+This composite view provides a holistic understanding of model behavior in a single visualization, particularly useful for presentations and reports.
+
+### State Evolution Tracking
+
+The system tracks how states evolve over time, including birth, merge, and delete operations:
+
+```python
+def create_state_evolution_plot(self, state_changes, save_path=None):
+    """Create a visualization of state birth, merge, and delete events."""
+    # Plot state count over time
+    # Highlight births, merges, and deletions
+    # Show detailed change counts in stacked bar chart
+```
+
+This visualization helps monitor model complexity:
+- When and why new states are created
+- When similar states are merged
+- When unused states are deleted
+- Overall trend in model complexity
+
+### Learning Curves and Performance Metrics
+
+The `create_learning_curve` method provides insights into model training progress:
+
+```python
+def create_learning_curve(self, losses, state_counts=None, save_path=None):
+    """Create a detailed learning curve visualization for model performance debugging."""
+    # Plot raw and smoothed loss values
+    # Add exponential moving average trend
+    # Mark minimum loss point
+    # Calculate loss reduction percentage
+    # Show correlation between loss and state count
+```
+
+Features of the learning curve visualization:
+
+1. **Multiple Smoothing Methods**: Raw values, window smoothing, and exponential moving average
+2. **Adaptive Window Size**: Automatically adjusts smoothing window based on data length
+3. **Progress Indicators**: Displays loss reduction percentage and min/max points
+4. **State Correlation**: Shows correlation between loss and number of states
+5. **Log Scale Option**: Automatically adds log scale inset for wide-range loss values
+6. **Dynamic Saving**: Creates both timestamped and latest versions for easy reference
+
+This comprehensive visualization system provides valuable insights into how the model's state space evolves during training, helping users understand and debug the dynamic state management process.
+
+---

@@ -37,6 +37,10 @@ class LiveHDPHMM:
                 # Increment window count
                 self.window_count += 1
                 
+                # Store the latest data and states for visualization
+                self.latest_data = window_data.clone()
+                self.latest_states, _ = self.model.infer_states(window_data)
+                
                 # Update states every 10 windows
                 if self.window_count % 10 == 0:
                     with torch.no_grad():

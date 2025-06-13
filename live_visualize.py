@@ -94,7 +94,15 @@ class LiveVisualizer:
         
         # Always save the figure, regardless of display mode
         try:
-            self.fig.savefig(f'plots/live_plot_window_{self.window_count}.png', dpi=300)
+            # Organize the plots
+            plot_filename = f'plots/live_plot_window_{self.window_count}.png'
+            paths = self.get_organized_plot_path('live_plot', plot_filename)
+            
+            for path, latest_path in paths:
+                self.fig.savefig(path, dpi=300)
+                if latest_path:
+                    self.fig.savefig(latest_path, dpi=300)
+            
             if 'DISPLAY' in os.environ and os.environ['DISPLAY']:
                 plt.pause(0.01)  # Only pause for display if in GUI mode
         except Exception as e:
@@ -110,21 +118,29 @@ class LiveVisualizer:
         # Make sure plots directory exists
         os.makedirs('plots', exist_ok=True)
         
-        # Save as image with bbox_inches to ensure everything is captured
-        plt.savefig('plots/transition_probs.png', dpi=300, bbox_inches='tight')
+        # Organize and save transition matrix visualization
+        trans_filename = f'plots/transition_probs_window_{self.window_count}.png'
+        paths = self.get_organized_plot_path('transition_matrix', trans_filename)
         
-        # Also save as numpy file for later analysis
+        for path, latest_path in paths:
+            plt.savefig(path, dpi=300, bbox_inches='tight')
+            if latest_path:
+                plt.savefig(latest_path, dpi=300, bbox_inches='tight')
+        
+        # Save transition matrix data
+        os.makedirs('plots/transition_matrix_data', exist_ok=True)
         trans_probs_np = trans_probs.cpu().detach().numpy()
-        np.save('plots/transition_matrix', trans_probs_np)
+        np.save('plots/transition_matrix_data/transition_matrix_window_{self.window_count}', trans_probs_np)
         
-        # Save the latest transition matrix with timestamp
-        np.save(f'plots/transition_matrix_window_{self.window_count}', trans_probs_np)
+        # Always save latest version
+        np.save('plots/transition_matrix', trans_probs_np)
         
         plt.close()
         
         # Save learning curve visualization if we have enough data
         if len(losses) > 1:
-            self.create_learning_curve(losses, state_counts, f'plots/learning_curve_window_{self.window_count}.png')
+            save_path = f'plots/learning_curve_window_{self.window_count}.png'
+            self.create_learning_curve(losses, state_counts, save_path)
         
         # Create and save tile visualization every 5 windows
         if self.window_count % 5 == 0 and len(self.state_history) > 0:
@@ -249,8 +265,15 @@ class LiveVisualizer:
         # Make sure plots directory exists
         os.makedirs('plots', exist_ok=True)
         
-        # Save with bbox_inches to ensure everything is captured
-        plt.savefig(f'plots/state_tiles_window_{self.window_count}.png', dpi=300, bbox_inches='tight')
+        # Organize and save tile visualization
+        tile_filename = f'plots/state_tiles_window_{self.window_count}.png'
+        paths = self.get_organized_plot_path('state_tiles', tile_filename)
+        
+        for path, latest_path in paths:
+            plt.savefig(path, dpi=300, bbox_inches='tight')
+            if latest_path:
+                plt.savefig(latest_path, dpi=300, bbox_inches='tight')
+        
         plt.close()
         
         # Also create the state sequence visualization for the most recent window
@@ -258,11 +281,12 @@ class LiveVisualizer:
             recent_states = self.state_history[-1]
             
             if self.current_data is not None and len(self.current_data) == len(recent_states):
+                sequence_filename = f'plots/state_sequence_window_{self.window_count}.png'
                 self.show_state_sequence(
                     self.current_data, 
                     recent_states,
                     max_states=max_state,
-                    save_path=f'plots/state_sequence_window_{self.window_count}.png'
+                    save_path=sequence_filename
                 )
     
     def show_state_sequence(self, data, states, max_states=None, save_path=None):
@@ -328,7 +352,14 @@ class LiveVisualizer:
         
         # Save or display
         if save_path:
-            plt.savefig(save_path, dpi=300)
+            # Organize and save state sequence visualization
+            paths = self.get_organized_plot_path('state_sequence', save_path)
+            
+            for path, latest_path in paths:
+                plt.savefig(path, dpi=300)
+                if latest_path:
+                    plt.savefig(latest_path, dpi=300)
+                    
             plt.close(fig)
         else:
             plt.show()
@@ -467,14 +498,13 @@ class LiveVisualizer:
             save_path = f'plots/learning_curve_window_{self.window_count}.png'
             
         try:
-            # Make sure plots directory exists
-            os.makedirs('plots', exist_ok=True)
+            # Organize and save learning curve
+            paths = self.get_organized_plot_path('learning_curve', save_path)
             
-            # Save figures with bbox_inches='tight' to ensure all content is included
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            
-            # Also save a general learning curve that gets updated
-            plt.savefig('plots/latest_learning_curve.png', dpi=300, bbox_inches='tight')
+            for path, latest_path in paths:
+                plt.savefig(path, dpi=300, bbox_inches='tight')
+                if latest_path:
+                    plt.savefig(latest_path, dpi=300, bbox_inches='tight')
         except Exception as e:
             print(f"Warning: Failed to save learning curve plot: {e}")
         finally:
@@ -589,14 +619,13 @@ class LiveVisualizer:
                 save_path = f'plots/state_evolution_window_{self.window_count}.png'
                 
             try:
-                # Make sure plots directory exists
-                os.makedirs('plots', exist_ok=True)
+                # Organize and save state evolution plot
+                paths = self.get_organized_plot_path('state_evolution', save_path)
                 
-                # Save figures with bbox_inches='tight' to ensure all content is included
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                
-                # Also save a general state evolution plot that gets updated
-                plt.savefig('plots/latest_state_evolution.png', dpi=300, bbox_inches='tight')
+                for path, latest_path in paths:
+                    plt.savefig(path, dpi=300, bbox_inches='tight')
+                    if latest_path:
+                        plt.savefig(latest_path, dpi=300, bbox_inches='tight')
             except Exception as e:
                 print(f"Warning: Failed to save state evolution plot: {e}")
             
@@ -613,8 +642,13 @@ class LiveVisualizer:
                 if save_path is None:
                     save_path = f'plots/state_evolution_window_{self.window_count}.png'
                 
-                plt.savefig(save_path, dpi=300)
-                plt.savefig('plots/latest_state_evolution.png', dpi=300)
+                # Organize and save error plot
+                paths = self.get_organized_plot_path('state_evolution', save_path)
+                
+                for path, latest_path in paths:
+                    plt.savefig(path, dpi=300)
+                    if latest_path:
+                        plt.savefig(latest_path, dpi=300)
             except:
                 print("Could not create error message plot")
         finally:
@@ -776,12 +810,6 @@ class LiveVisualizer:
         # Use subplots_adjust for better compatibility
         plt.subplots_adjust(hspace=0.4, top=0.95, bottom=0.05, left=0.1, right=0.95)
         
-        # Generate save path if not provided
-        if save_path is None:
-            # Make sure plots directory exists
-            os.makedirs('plots', exist_ok=True)
-            save_path = f'plots/state_patterns_window_{self.window_count}.png'
-        
         # Calculate state durations
         durations = []
         state_labels = []
@@ -811,20 +839,29 @@ class LiveVisualizer:
             # Make sure plots directory exists
             os.makedirs('plots', exist_ok=True)
             save_path = f'plots/state_patterns_window_{self.window_count}.png'
-        
-        # Generate save path if not provided
-        if save_path is None:
-            # Make sure plots directory exists
-            os.makedirs('plots', exist_ok=True)
-            save_path = f'plots/composite_viz_window_{self.window_count}.png'
+            
+            # Use the helper method to organize plots
+            paths = self.get_organized_plot_path('state_patterns', save_path)
+        else:
+            # Use the provided path but still organize
+            paths = self.get_organized_plot_path('state_patterns', save_path)
             
         try:
             # Save with bbox_inches to ensure all content is captured
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.savefig('plots/latest_composite_viz.png', dpi=300, bbox_inches='tight')
-            print(f"Composite visualization saved to {save_path}")
+            if paths:
+                for path_pair in paths:
+                    subdir_path, latest_path = path_pair
+                    plt.savefig(subdir_path, dpi=300, bbox_inches='tight')
+                    print(f"State patterns visualization saved to {subdir_path}")
+                    
+                    # If latest path is provided, save there too
+                    if latest_path:
+                        plt.savefig(latest_path, dpi=300, bbox_inches='tight')
+            else:
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                print(f"State patterns visualization saved to {save_path}")
         except Exception as e:
-            print(f"Warning: Failed to save composite visualization: {e}")
+            print(f"Warning: Failed to save state patterns visualization: {e}")
         finally:
             plt.close(fig)
     
@@ -1026,11 +1063,26 @@ class LiveVisualizer:
             os.makedirs('plots', exist_ok=True)
             save_path = f'plots/composite_viz_window_{self.window_count}.png'
             
+            # Use the helper method to organize plots
+            paths = self.get_organized_plot_path('composite_viz', save_path)
+        else:
+            # Use the provided path but still organize
+            paths = self.get_organized_plot_path('composite_viz', save_path)
+            
         try:
             # Save with bbox_inches to ensure all content is captured
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.savefig('plots/latest_composite_viz.png', dpi=300, bbox_inches='tight')
-            print(f"Composite visualization saved to {save_path}")
+            if paths:
+                for path_pair in paths:
+                    subdir_path, latest_path = path_pair
+                    plt.savefig(subdir_path, dpi=300, bbox_inches='tight')
+                    print(f"Composite visualization saved to {subdir_path}")
+                    
+                    # If latest path is provided, save there too
+                    if latest_path:
+                        plt.savefig(latest_path, dpi=300, bbox_inches='tight')
+            else:
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                print(f"Composite visualization saved to {save_path}")
         except Exception as e:
             print(f"Warning: Failed to save composite visualization: {e}")
         finally:
@@ -1142,6 +1194,8 @@ class LiveVisualizer:
             if save_path is None:
                 os.makedirs('plots/state_time_series', exist_ok=True)
                 state_save_path = f'plots/state_time_series/state_{state}_window_{self.window_count}.png'
+                # Use the helper method to organize plots
+                paths = self.get_organized_plot_path('state_time_series', state_save_path)
             else:
                 # Modify save_path to include state number
                 dir_name = os.path.dirname(save_path)
@@ -1149,11 +1203,24 @@ class LiveVisualizer:
                 os.makedirs(dir_name, exist_ok=True)
                 name_parts = os.path.splitext(file_name)
                 state_save_path = os.path.join(dir_name, f"{name_parts[0]}_state_{state}{name_parts[1]}")
+                # Use the helper method to organize plots
+                paths = self.get_organized_plot_path('state_time_series', state_save_path)
             
             # Save the figure
             try:
-                plt.savefig(state_save_path, dpi=300, bbox_inches='tight')
-                print(f"State {state} time series saved to {state_save_path}")
+                # Save with bbox_inches to ensure all content is captured
+                if paths:
+                    for path_pair in paths:
+                        subdir_path, latest_path = path_pair
+                        plt.savefig(subdir_path, dpi=300, bbox_inches='tight')
+                        print(f"State {state} time series saved to {subdir_path}")
+                        
+                        # If latest path is provided, save there too
+                        if latest_path:
+                            plt.savefig(latest_path, dpi=300, bbox_inches='tight')
+                else:
+                    plt.savefig(state_save_path, dpi=300, bbox_inches='tight')
+                    print(f"State {state} time series saved to {state_save_path}")
             except Exception as e:
                 print(f"Warning: Failed to save state time series for state {state}: {e}")
             finally:
@@ -1200,9 +1267,62 @@ class LiveVisualizer:
             # Save the summary figure
             os.makedirs('plots/state_time_series', exist_ok=True)
             summary_path = f'plots/state_time_series/all_states_summary_window_{self.window_count}.png'
-            plt.savefig(summary_path, dpi=300, bbox_inches='tight')
-            print(f"State time series summary saved to {summary_path}")
+            
+            # Use the helper method to organize plots
+            summary_paths = self.get_organized_plot_path('state_time_series_summary', summary_path)
+            
+            if summary_paths:
+                for path_pair in summary_paths:
+                    subdir_path, latest_path = path_pair
+                    plt.savefig(subdir_path, dpi=300, bbox_inches='tight')
+                    print(f"State time series summary saved to {subdir_path}")
+                    
+                    # If latest path is provided, save there too
+                    if latest_path:
+                        plt.savefig(latest_path, dpi=300, bbox_inches='tight')
+            else:
+                plt.savefig(summary_path, dpi=300, bbox_inches='tight')
+                print(f"State time series summary saved to {summary_path}")
         except Exception as e:
             print(f"Warning: Failed to save state time series summary: {e}")
         finally:
             plt.close()
+    
+    def get_organized_plot_path(self, plot_type, filename):
+        """
+        Organize plots into subdirectories based on their type,
+        while keeping the latest and final versions in the main plots directory.
+        
+        Args:
+            plot_type (str): Type of plot (e.g., 'live_plot', 'state_evolution', etc.)
+            filename (str): Original filename
+            
+        Returns:
+            str: Path to save the plot
+        """
+        # Create subdirectory for this plot type if it doesn't exist
+        subdir = f'plots/{plot_type}'
+        os.makedirs(subdir, exist_ok=True)
+        
+        # Get the base directory and filename
+        base_dir = os.path.dirname(filename) or '.'
+        base_name = os.path.basename(filename)
+        
+        # Is this a "final" plot?
+        is_final = 'final' in base_name
+        
+        # Always save the latest version to both the subdirectory and main directory
+        if self.window_count % 10 == 0 or is_final:
+            # For milestone windows (every 10) or final plots, save to main dir and subdir
+            # Replace window-specific part with "latest" for the main dir copy
+            latest_name = base_name.replace(f'window_{self.window_count}', 'latest')
+            latest_path = os.path.join('plots', latest_name)
+            
+            # Also save the original named version to the subdirectory
+            subdir_path = os.path.join(subdir, base_name)
+            
+            return [(subdir_path, latest_path)]
+        else:
+            # For intermediate windows, just save to subdirectory
+            subdir_path = os.path.join(subdir, base_name)
+            return [(subdir_path, None)]
