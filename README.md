@@ -1,38 +1,64 @@
 # Bayesian Non-Parametric Modeling with HDP-HMM for Live Streaming Data
 
-This project implements a Hierarchical Dirichlet Process Hidden Markov Model (HDP-HMM) with stick-breaking construction for unsupervised learning of state sequences in multidimensional time series data. The model is specifically designed to work with live streaming data such as system metrics (CPU utilization, temperature, RAM usage, etc.) and supports incremental training, real-time inference, and visualization.
+This project implements a Hierarchical Dirichlet Process Hidden Markov Model (HDP-HMM) with stick-breaking construction for unsupervised learning of state sequences in multidimensional time series data. The model is specifically designed to work with live streaming data such as system metrics (CPU utilization, temperature, RAM usage, etc.) and supports incremental training, real-time inference, and comprehensive visualization.
 
-The implementation is inspired by and builds upon the theoretical foundations of the [bnpy library](https://github.com/bnpy/bnpy), with a focus on GPU acceleration and real-time streaming data processing using PyTorch.
+The implementation is inspired by and builds upon the theoretical foundations of the [bnpy library](https://github.com/bnpy/bnpy), with a focus on GPU acceleration and real-time streaming data processing using PyTorch. It features dynamic state management (birth, merge, delete) for automatic discovery of the optimal number of states.
 
 ## Features
 
 - **Bayesian non-parametric modeling** using HDP-HMM to automatically determine the number of states
+- **Dynamic state management** with birth, merge, and delete operations for adaptive model complexity
 - **PyTorch implementation** with GPU acceleration for faster training and inference
 - **Live data streaming** support with sliding window processing
 - **Incremental model updates** for continuous learning
-- **Real-time visualization** of time series data, state assignments, and transition probabilities
+- **Comprehensive visualization suite**:
+  - Time series data with state assignments
+  - State pattern analysis showing what each state represents
+  - State-specific time series visualizations for each discovered state
+  - State evolution tracking with birth/merge/delete events
+  - Transition probability heatmaps
+  - Learning curves and model performance metrics
+  - Composite visualizations combining multiple views
 - **Model persistence** with checkpointing for resuming training
 - **Performance monitoring** for tracking training and inference times
+- **Robust error handling** with headless operation support for deployment in production environments
 
 ## Project Structure
 
 ```
-bnpy_gpu/
+LatentDynamicsBayes/
 ├── config.json              # Configuration file
 ├── main.py                  # Main entry point
+├── hdp_hmm.py               # Core HDP-HMM implementation
+├── live_train.py            # Live training module
+├── live_data_collector.py   # Data collection for live streaming
+├── live_visualize.py        # Comprehensive visualization suite
+├── demo.py                  # Quick demonstration script
 ├── models/                  # Saved models directory
-├── plots/                   # Output plots directory
-└── src/                     # Source code
-    ├── data/                # Data collection and processing
-    │   ├── collector.py     # Live data collection module
+│   ├── hdp_hmm.pth          # Trained model
+│   └── hdp_hmm_checkpoint.pth # Training checkpoint
+├── plots/                   # Generated visualizations
+│   ├── live_plot/           # Live time series plots subdirectory
+│   ├── state_patterns/      # State pattern visualizations subdirectory
+│   ├── state_time_series/   # State-specific time series analysis subdirectory
+│   ├── state_evolution/     # State change tracking subdirectory
+│   ├── learning_curve/      # Training progress subdirectory
+│   ├── composite_viz/       # Combined visualizations subdirectory
+│   ├── state_sequence/      # State sequence visualizations subdirectory
+│   ├── state_tiles/         # State tile visualizations subdirectory
+│   ├── transition_matrix/   # Transition probability matrices subdirectory
+│   └── *_latest.png         # Latest plots kept in the main directory
+└── src/                     # Source code modules
+    ├── data/                # Data processing
+    │   ├── collector.py     # Data collection utilities
     │   └── processor.py     # Data preprocessing utilities
-    ├── model/               # Model implementation
-    │   ├── hdp_hmm.py       # HDP-HMM model implementation
+    ├── model/               # Model components
+    │   ├── hdp_hmm.py       # Alternative HDP-HMM implementation
     │   └── trainer.py       # Training and inference module
     ├── utils/               # Utility functions
-    │   └── utils.py         # Helper utilities and performance monitoring
-    └── visualization/       # Visualization tools
-        └── visualizer.py    # Real-time visualization module
+    │   └── utils.py         # Helper utilities
+    └── visualization/       # Visualization components
+        └── visualizer.py    # Visualization utilities
 ```
 
 ## Requirements
@@ -49,20 +75,30 @@ bnpy_gpu/
 Clone the repository and install the required packages:
 
 ```bash
-git clone https://github.com/yourusername/bnpy_gpu.git
-cd bnpy_gpu
+git clone https://github.com/yourusername/LatentDynamicsBayes.git
+cd LatentDynamicsBayes
 pip install -r requirements.txt
 ```
 
 ## Usage Examples
 
-### Basic Usage
+### Basic Usage (Live Mode)
 
-Run the model with default settings:
+Run the model with default settings using synthetic data:
 
 ```bash
 python main.py
 ```
+
+### Offline Mode with CSV Files
+
+Process data from CSV files stored in a directory:
+
+```bash
+python main.py --data-dir data --window-size 50 --n-features 3
+```
+
+Each CSV file should have columns representing features and rows representing time steps. The files will be processed in alphabetical order. Multiple CSV files can be used and will be processed sequentially.
 
 ### Quick Demo
 
@@ -74,7 +110,7 @@ python demo.py
 
 ### Using Real System Metrics
 
-To use real system metrics instead of simulated data:
+To use real system metrics instead of simulated data (live mode):
 
 ```bash
 python main.py --use-real
@@ -96,7 +132,19 @@ Specify a custom configuration file:
 python main.py --config my_config.json
 ```
 
-## Prerequisites
+### Command Line Arguments
+
+The following command-line arguments are available:
+
+```
+--no-gui           Run without GUI visualization
+--config CONFIG    Path to config file
+--max-windows N    Maximum number of windows to process (default: 1000)
+--data-dir DIR     Directory containing CSV files for offline processing
+--window-size N    Size of sliding window (default: 100)
+--stride N         Stride for sliding window in offline mode (default: window_size)
+--n-features N     Number of features in the data (default: 3)
+```
 
 Install the required packages:
 
@@ -120,6 +168,43 @@ Ensure a CUDA-compatible GPU for acceleration (the code falls back to CPU if una
 - **Visualization**: The interactive plot updates every `sample_interval` seconds. Adjust `window_size` and `sample_interval` based on your system's data rate.
 - **Model Persistence**: The model is saved periodically and on exit, enabling resumption or fine-tuning.
 - **Scalability**: For high-frequency data, consider increasing the `sample_interval` or reducing `max_states` to improve performance.
+
+## Plot Organization
+
+The visualizations are organized to maintain a clean and efficient directory structure:
+
+1. **Main Directory Plots** - Only the most important plots are kept in the main `plots/` directory:
+   - **Latest plots** (e.g., `learning_curve_latest.png`) - Always show the most recent state
+   - **Final plots** (e.g., `final_state_evolution.png`) - Created at the end of a run
+
+2. **Subdirectories** - All intermediate plots are organized into type-specific subdirectories:
+   - `plots/live_plot/` - Time series with state assignments for each window
+   - `plots/state_patterns/` - Patterns representing each state
+   - `plots/state_time_series/` - Detailed time series for each state
+   - `plots/state_evolution/` - Tracking of state changes (birth, merge, delete)
+   - `plots/learning_curve/` - Model learning progress
+   - `plots/composite_viz/` - Combined multi-panel visualizations
+   - `plots/state_sequence/` - State sequence visualizations
+   - `plots/state_tiles/` - Tile visualizations of state assignments
+   - `plots/transition_matrix/` - Transition probability matrices
+
+This organization ensures that the main directory remains uncluttered while maintaining a complete history of visualizations for analysis. You can review the latest state at a glance in the main directory, or explore the full history in the subdirectories.
+
+## Code Organization
+
+This repository is organized with a dual structure for flexibility:
+
+1. **Root-level implementation** (hdp_hmm.py, live_train.py, live_visualize.py):
+   - Provides a simple, integrated interface for quick experimentation
+   - Imports core functionality from the src modules
+   - Main entry point for most use cases
+
+2. **Modular src structure** (src/model, src/data, etc.):
+   - Contains the core implementation details
+   - More maintainable and testable code structure
+   - Designed for integration into larger applications
+
+This approach allows for both rapid prototyping (using the root-level files) and integration into larger systems (using the src modules directly).
 
 ## Configuration
 
@@ -435,6 +520,108 @@ The visualizations provide key insights into model behavior:
 
 These enhanced visualization features make it much easier to debug, understand, and optimize the model's behavior, particularly how it determines the optimal number of states.
 
+## Visualization Features
+
+The project includes comprehensive visualization capabilities for real-time monitoring and analysis:
+
+- **Time Series Visualization**: Display of multidimensional time series data with state assignments
+- **State Evolution Tracking**: Visualization of state birth, merge, and delete events over time
+- **Transition Probability Heatmaps**: Visual representation of state transition dynamics
+- **Learning Curve Analysis**: Detailed loss tracking with smoothing and state correlation
+- **Tile Plots**: Visualization of state assignments across multiple windows
+- **State Sequence Visualization**: Detailed view of state transitions within a window
+- **State Pattern Analysis**: Visual representation of what patterns each state represents
+- **Comprehensive State Reports**: Composite visualizations showing state statistics, durations, and transitions
+
+All visualizations are designed with robustness in mind:
+- Compatible with both GUI and headless environments
+- Error handling to prevent crashes during visualization
+- Automatic plot directory creation and management
+- Cross-platform layout compatibility using `subplots_adjust`
+- Both interactive display and file saving capabilities
+
+For detailed interpretation guidance, see the [Visualization Interpretation](#visualization-interpretation) section.
+
+## Visualization Interpretation
+
+### State Evolution Plot
+
+The state evolution plot shows how the number of states changes over time:
+- **Green triangles (▲)**: Birth of new states
+- **Orange circles (●)**: Merge of similar states
+- **Red triangles (▼)**: Deletion of inactive states
+
+This plot helps identify when the model adjusts its complexity to fit the data better.
+
+### Learning Curve Plot
+
+The learning curve plot shows the model's loss over time:
+- **Blue line**: Raw loss values
+- **Red line**: Smoothed trend
+- **Green line**: Exponential moving average
+
+A decreasing trend indicates the model is learning effectively. Plateaus may suggest convergence or local minima.
+
+### Tile Plot
+
+The tile plot shows state assignments across multiple windows:
+- Each row represents a time point
+- Each column represents a window
+- Colors represent different states
+
+This visualization helps identify patterns of state persistence and transitions over time.
+
+### Transition Probability Heatmap
+
+The transition probability heatmap shows the likelihood of transitioning between states:
+- Rows represent "from" states
+- Columns represent "to" states
+- Darker colors indicate higher probabilities
+
+Strong diagonal elements indicate states with high self-transition probabilities (persistence).
+
+### State Pattern Visualization
+
+The state pattern visualization shows what patterns each state represents:
+- **Mean Value Profile**: The average pattern of each feature for each state
+- **Variation Display**: Standard deviation and min/max ranges for each feature
+- **State Duration**: Shows how long the model typically stays in each state
+- **State Frequency**: Indicates how often each state occurs in the data
+
+This visualization is essential for interpreting what each state represents in terms of the underlying data patterns.
+
+### Composite State Visualization
+
+The composite visualization provides a comprehensive view combining:
+- **Time Series with State Coloring**: Shows which parts of the data are assigned to each state
+- **State Sequence Timeline**: Clear visualization of the state sequence
+- **Feature Distribution by State**: Statistical summary of feature values for each state
+- **Transition Probability Matrix**: Shows how states transition to each other
+- **State Duration Histogram**: Distribution of how long the model stays in each state
+
+This visualization is particularly useful for understanding the relationship between states and the underlying data patterns.
+
+## Headless and Remote Server Usage
+
+The system is designed to work in both GUI and headless environments. When running on a remote server or in an environment without a display:
+
+```bash
+# Option 1: Set environment variable (recommended)
+export DISPLAY=""
+python main.py
+
+# Option 2: Use the no-gui flag
+python main.py --no-gui
+```
+
+In headless mode:
+- All plots are automatically saved to the `plots/` directory
+- The matplotlib backend automatically switches to a non-GUI version
+- Interactive display is disabled while file saving remains active
+- Special error handling ensures failed visualizations don't crash the program
+
+This makes the system ideal for long-running experiments on remote servers where you can periodically check the generated plots for analysis.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -566,6 +753,39 @@ The transition matrix is a key output of the model, showing:
 - Potential state clusters (groups of states with high transition probabilities between them)
 
 These exports facilitate further analysis of the discovered state dynamics, enabling integration with other analysis tools and visualization software.
+
+### State-Specific Time Series Analysis
+
+To analyze the characteristics of each discovered state, the system generates detailed state-specific time series visualizations:
+
+```bash
+# Run the model with at least 10 windows to trigger state-specific visualization
+python main.py --max-windows 10
+
+# For headless environments
+python main.py --no-gui --max-windows 10
+```
+
+This generates:
+
+1. **Individual state files** in `plots/state_time_series/`:
+   - `state_X_window_Y.png`: Shows all time series data with points belonging to state X highlighted
+   - Includes statistics (mean, std) and temporal distribution for each state
+
+2. **Summary visualization**:
+   - `all_states_summary_window_Y.png`: Overview of all states with color-coding
+
+To interpret these visualizations:
+
+- **State Occurrences (top panel)**: Shows when each state is active in the sequence
+- **Feature Patterns (per-feature panels)**: Reveals the characteristic pattern of each feature for this state
+- **Statistical Indicators**: Mean and standard deviation lines help understand the state's distribution
+- **Full Series Context**: Gray background shows the full time series for context
+
+These visualizations help answer questions like:
+- "What does state 3 actually represent in my data?"
+- "When does state 5 typically occur?"
+- "Which features are most distinctive for state 2?"
 
 ## References
 

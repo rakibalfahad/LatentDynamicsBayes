@@ -37,6 +37,10 @@ class LiveHDPHMM:
                 # Increment window count
                 self.window_count += 1
                 
+                # Store the latest data and states for visualization
+                self.latest_data = window_data.clone()
+                self.latest_states, _ = self.model.infer_states(window_data)
+                
                 # Update states every 10 windows
                 if self.window_count % 10 == 0:
                     with torch.no_grad():
@@ -396,17 +400,26 @@ class LiveHDPHMM:
             # Mark birth events
             for state in sc.get('birthed', []):
                 if state < len(state_timeline):
-                    state_timeline[state][-1] = 'B'  # Birth
+                    if state_timeline[state]:  # Check if list is not empty
+                        state_timeline[state][-1] = 'B'  # Birth
+                    else:
+                        state_timeline[state].append('B')
             
             # Mark merge events (source states)
             for src, dst in sc.get('merged', []):
                 if src < len(state_timeline):
-                    state_timeline[src][-1] = f'M→{dst}'  # Merged into dst
+                    if state_timeline[src]:  # Check if list is not empty
+                        state_timeline[src][-1] = f'M→{dst}'  # Merged into dst
+                    else:
+                        state_timeline[src].append(f'M→{dst}')
             
             # Mark deleted states
             for state in sc.get('deleted', []):
                 if state < len(state_timeline):
-                    state_timeline[state][-1] = 'D'  # Deleted
+                    if state_timeline[state]:  # Check if list is not empty
+                        state_timeline[state][-1] = 'D'  # Deleted
+                    else:
+                        state_timeline[state].append('D')
             
             # Fill in inactive states with dots
             for state in state_timeline:

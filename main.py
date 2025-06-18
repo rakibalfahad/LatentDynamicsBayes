@@ -9,6 +9,7 @@ import seaborn as sns
 from src.data.processor import LiveDataCollector
 from src.model.trainer import LiveHDPHMM
 from live_visualize import LiveVisualizer
+from csv_processor import CSVDataProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -22,18 +23,21 @@ logger = logging.getLogger("hdp_hmm")
 
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Run HDP-HMM on live data')
+    parser = argparse.ArgumentParser(description='Run HDP-HMM on live or offline data')
     parser.add_argument('--no-gui', action='store_true', help='Run without GUI visualization')
     parser.add_argument('--config', type=str, help='Path to config file')
-    parser.add_argument('--max-iterations', type=int, help='Maximum number of iterations to run')
+    parser.add_argument('--max-windows', type=int, default=1000, help='Maximum number of windows to process')
+    parser.add_argument('--data-dir', type=str, help='Directory containing CSV files for offline processing')
+    parser.add_argument('--window-size', type=int, default=100, help='Size of sliding window')
+    parser.add_argument('--stride', type=int, help='Stride for sliding window in offline mode (default: window_size)')
+    parser.add_argument('--n-features', type=int, default=3, help='Number of features in the data')
     args = parser.parse_args()
-    
     # Parameters
-    n_features = 3
-    window_size = 100
+    n_features = args.n_features
+    window_size = args.window_size
     max_states = 20
     sample_interval = 1.0
-    max_iterations = args.max_iterations if args.max_iterations else 1000
+    max_iterations = args.max_windows  # Use the max_windows argument
     model_path = "models/hdp_hmm.pth"
     plots_path = "plots"
     
@@ -49,8 +53,32 @@ def main():
     logger.info("Initializing components...")
     logger.info(f"Training on device: {torch.device('cuda' if torch.cuda.is_available() else 'cpu')}")
     
-    # Initialize components
-    collector = LiveDataCollector(n_features, window_size, sample_interval)
+    # Determine if we're in offline or live mode
+    offline_mode = args.data_dir is not None
+    
+    # Initialize data source
+    if offline_mode:
+        logger.info(f"Running in offline mode with data from {args.data_dir}")
+        data_source = CSVDataProcessor(args.data_dir, window_size, args.stride)
+        if not data_source.load_csv_files():
+            logger.error("Failed to load CSV files. Exiting.")
+            return
+        # Update n_features from the loaded data
+        n_features = data_source.n_features
+        logger.info(f"Using {n_features} features from CSV files")
+        # Update max_iterations if needed
+        total_windows = data_source.get_total_windows()
+        if total_windows < max_iterations:
+            logger.info(f"Adjusting max iterations from {max_iterations} to {total_windows} based on available data")
+            max_iterations = total_windows
+    else:
+        logger.info("Running in live mode with synthetic data")
+        data_source = LiveDataCollector(n_features, window_size, sample_interval)
+        # Pre-fill the collector with data so we get a window immediately
+        for _ in range(window_size):
+            data_source.collect_window()
+    
+    # Initialize trainer
     trainer = LiveHDPHMM(n_features, max_states, lr=0.01, model_path=model_path)
     
     # Initialize visualizer if GUI is enabled
@@ -62,13 +90,20 @@ def main():
     logger.info("Checking for pre-trained model...")
     trainer.load_model()
     
-    logger.info("Starting live processing...")
+    logger.info("Starting processing...")
     start_time = time.time()
     window_count = 0
     try:
         for i in range(max_iterations):
-            # Collect new window
-            window_data = collector.collect_window()
+            # Get next window of data
+            if offline_mode:
+                window_data = data_source.get_next_window()
+                if window_data is None:
+                    logger.info("Reached the end of all CSV files")
+                    break
+            else:
+                window_data = data_source.collect_window()
+                
             if window_data is not None:
                 window_count += 1
                 # Train and infer
@@ -117,12 +152,19 @@ def main():
                                 f'plots/learning_curve_window_{window_count}.png'
                             )
                         
+                        # Create state-specific time series visualizations every 10 windows
+                        if window_count % 10 == 0:
+                            temp_visualizer.current_data = window_data.cpu()  # Store current data
+                            temp_visualizer.visualize_state_time_series(window_data, states)
+                        
                         del temp_visualizer
                 
-            time.sleep(sample_interval)
+            # In live mode, wait for the next sample; in offline mode, continue immediately
+            if not offline_mode:
+                time.sleep(sample_interval)
     
     except KeyboardInterrupt:
-        logger.info("Stopping live processing...")
+        logger.info("Stopping processing...")
         trainer.save_model()
         if visualizer:
             visualizer.close()
@@ -133,6 +175,9 @@ def main():
         raise
     
     finally:
+        end_time = time.time()
+        processing_time = end_time - start_time
+        
         logger.info(f"Saving final model...")
         trainer.save_model()
         
@@ -189,6 +234,34 @@ def main():
                     trainer.state_changes,
                     'plots/final_state_evolution.png'
                 )
+                
+                # We need to get the final data window and states to create visualizations
+                # Create a temporary visualizer with the last processed data
+                if hasattr(trainer, 'latest_data') and hasattr(trainer, 'latest_states'):
+                    temp_visualizer = LiveVisualizer(trainer.model.n_features, trainer.latest_data.shape[0])
+                    temp_visualizer.window_count = window_count
+                    temp_visualizer.current_data = trainer.latest_data.cpu()
+                    
+                    # Create and save state patterns visualization
+                    temp_visualizer.visualize_state_patterns(
+                        trainer.latest_data, 
+                        trainer.latest_states, 
+                        'plots/final_state_patterns.png'
+                    )
+                    
+                    # Create and save composite visualization
+                    temp_visualizer.create_composite_state_visualization(
+                        trainer.latest_data,
+                        trainer.latest_states,
+                        'plots/final_composite_viz.png'
+                    )
+                    
+                    # Create and save state-specific time series
+                    temp_visualizer.visualize_state_time_series(
+                        trainer.latest_data,
+                        trainer.latest_states,
+                        'plots/final_state_time_series.png'
+                    )
             else:
                 # Create a temporary visualizer
                 temp_visualizer = LiveVisualizer(n_features, window_size)
@@ -203,14 +276,44 @@ def main():
                         'plots/final_learning_curve.png'
                     )
                 
-                temp_visualizer.create_state_evolution_plot(
-                    trainer.state_changes,
-                    'plots/final_state_evolution.png'
-                )
+                # Create final state evolution plot
+                if trainer.state_changes:
+                    temp_visualizer.create_state_evolution_plot(
+                        trainer.state_changes,
+                        'plots/final_state_evolution.png'
+                    )
+                
+                # Create final visualizations if we have latest data
+                if hasattr(trainer, 'latest_data') and hasattr(trainer, 'latest_states'):
+                    temp_visualizer.current_data = trainer.latest_data.cpu()
+                    
+                    # Create and save state patterns visualization
+                    temp_visualizer.visualize_state_patterns(
+                        trainer.latest_data, 
+                        trainer.latest_states, 
+                        'plots/final_state_patterns.png'
+                    )
+                    
+                    # Create and save composite visualization
+                    temp_visualizer.create_composite_state_visualization(
+                        trainer.latest_data,
+                        trainer.latest_states,
+                        'plots/final_composite_viz.png'
+                    )
+                    
+                    # Create and save state-specific time series
+                    temp_visualizer.visualize_state_time_series(
+                        trainer.latest_data,
+                        trainer.latest_states,
+                        'plots/final_state_time_series.png'
+                    )
+                
                 del temp_visualizer
         
-        logger.info(f"Processed {window_count} windows in {time.time() - start_time:.1f} seconds")
-        logger.info("Live processing complete")
+        # Print processing summary
+        mode_str = "offline" if offline_mode else "live"
+        logger.info(f"Processed {window_count} windows in {processing_time:.1f} seconds ({mode_str} mode)")
+        logger.info(f"{mode_str.capitalize()} processing complete")
         if visualizer:
             visualizer.close()
 
