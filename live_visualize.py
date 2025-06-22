@@ -1,17 +1,33 @@
+"""
+Live Visualization Module for HDP-HMM.
+
+This module provides real-time visualization capabilities for the HDP-HMM model,
+allowing users to monitor state assignments, transition probabilities, and model
+performance during training.
+"""
+
+import os
+import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import seaborn as sns
-import numpy as np
-import os
 
 class LiveVisualizer:
+    """
+    Class for visualizing HDP-HMM model results in real-time.
+    
+    This class provides various visualization methods for monitoring state
+    assignments, transition probabilities, and model performance during training.
+    """
+    
     def __init__(self, n_features, window_size):
         """
-        Visualize live inference results.
+        Initialize the LiveVisualizer.
         
         Args:
-            n_features (int): Number of features
-            window_size (int): Size of sliding window
+            n_features (int): Number of features in the observation space
+            window_size (int): Size of the sliding window for data processing
         """
         self.n_features = n_features
         self.window_size = window_size
@@ -33,17 +49,21 @@ class LiveVisualizer:
         self.max_history_length = 50  # Maximum number of windows to track
         self.current_data = None  # Store current data for visualization
     
-    def update_plot(self, data, states, trans_probs, loss, losses, state_counts=[], state_changes=None):
-        """Update live plot with new data.
+    def update_plot(self, data, states, trans_probs, loss, losses, state_counts=None, state_changes=None):
+        """
+        Update all visualizations with new data.
         
         Args:
-            data: Tensor of shape (window_size, n_features)
-            states: Inferred states
-            trans_probs: Transition probabilities
-            loss: Current loss value
-            losses: List of all loss values
-            state_counts: List of state counts over time
-            state_changes: List of state change dictionaries from the trainer
+            data (torch.Tensor): Tensor of shape (window_size, n_features) containing observation data
+            states (torch.Tensor): Tensor of shape (window_size) containing state assignments
+            trans_probs (torch.Tensor): Tensor of shape (n_states, n_states) containing transition probabilities
+            loss (float): Current loss value
+            losses (list): List of all loss values over time
+            state_counts (list, optional): List of state counts over time. Defaults to None.
+            state_changes (list, optional): List of state change dictionaries from the trainer. Defaults to None.
+        
+        Returns:
+            None
         """
         self.fig.clear()
         data = data.cpu().numpy()
@@ -174,14 +194,16 @@ class LiveVisualizer:
     
     def create_tile_visualization(self):
         """
-        Create a tile visualization showing state assignments over time,
-        similar to the visualization in bnpy.
+        Create a tile visualization showing state assignments over time.
         
-        The visualization shows:
+        This visualization is similar to the one in bnpy, showing:
         - Each row represents a time point
         - Each column represents a window
         - Colors represent different states
         - This helps visualize state persistence and transitions over time
+        
+        Returns:
+            None
         """
         if not self.state_history:
             return
@@ -291,17 +313,18 @@ class LiveVisualizer:
     
     def show_state_sequence(self, data, states, max_states=None, save_path=None):
         """
-        Create a visualization showing data sequence with state assignments below,
-        inspired by the bnpy visualization style.
+        Create a visualization showing data sequence with state assignments below.
+        
+        This visualization is inspired by the bnpy visualization style.
         
         Args:
-            data: Tensor of shape (window_size, n_features)
-            states: Tensor of state assignments (window_size,)
-            max_states: Maximum number of states to consider for colormap
-            save_path: Path to save the visualization, if None, display only
+            data (np.ndarray or torch.Tensor): Tensor of shape (window_size, n_features)
+            states (np.ndarray or torch.Tensor): Tensor of state assignments (window_size,)
+            max_states (int, optional): Maximum number of states to consider for colormap
+            save_path (str, optional): Path to save the visualization, if None, display only
         
         Returns:
-            fig, axes: The figure and axes objects
+            tuple: Figure and axes objects
         """
         import matplotlib.cm as cm
         
@@ -371,9 +394,13 @@ class LiveVisualizer:
         Create a detailed learning curve visualization for model performance debugging.
         
         Args:
-            losses: List of loss values over time
-            state_counts: Optional list of state counts over time
-            save_path: Path to save the visualization, if None uses default path
+            losses (list): List of loss values over time
+            state_counts (list, optional): List of state counts over time. Defaults to None.
+            save_path (str, optional): Path to save the visualization. If None uses default path.
+                Defaults to None.
+        
+        Returns:
+            None
         """
         if not losses:
             return
@@ -516,8 +543,12 @@ class LiveVisualizer:
         Create a visualization of state birth, merge, and delete events.
         
         Args:
-            state_changes: List of state change dictionaries from the trainer
-            save_path: Path to save the visualization, if None uses default path
+            state_changes (list): List of state change dictionaries from the trainer
+            save_path (str, optional): Path to save the visualization. If None uses default path.
+                Defaults to None.
+        
+        Returns:
+            None
         """
         if not state_changes:
             print("Warning: No state changes to visualize")
@@ -660,15 +691,21 @@ class LiveVisualizer:
         Create a comprehensive visualization showing what patterns each state represents.
         
         Args:
-            data: Optional tensor of shape (window_size, n_features). Uses current_data if None.
-            states: Optional tensor of state assignments. Uses most recent states if None.
-            save_path: Path to save the visualization. If None, generates a default path.
+            data (np.ndarray or torch.Tensor, optional): Tensor of shape (window_size, n_features).
+                Uses current_data if None. Defaults to None.
+            states (np.ndarray or torch.Tensor, optional): Tensor of state assignments.
+                Uses most recent states if None. Defaults to None.
+            save_path (str, optional): Path to save the visualization. If None, generates a default path.
+                Defaults to None.
+                
+        Returns:
+            None
             
         This visualization shows:
-        1. Average pattern for each state across all features
-        2. Distribution of data within each state (min/max/std)
-        3. State transition diagram with most common transitions
-        4. State sequence timeline with data overlay
+            1. Average pattern for each state across all features
+            2. Distribution of data within each state (min/max/std)
+            3. State transition diagram with most common transitions
+            4. State sequence timeline with data overlay
         """
         # Use current data if none provided
         if data is None and self.current_data is not None:
@@ -866,7 +903,12 @@ class LiveVisualizer:
             plt.close(fig)
     
     def close(self):
-        """Close the plot."""
+        """
+        Close all plot windows to free resources.
+        
+        Returns:
+            None
+        """
         try:
             plt.ioff()
             plt.close(self.fig)
@@ -877,16 +919,22 @@ class LiveVisualizer:
         """
         Create a comprehensive visualization that combines state sequence and patterns.
         
-        This visualization combines:
-        1. Time series data with state coloring
-        2. State sequence visualization (similar to bnpy)
-        3. State pattern summaries
-        4. Transition probabilities between states
-        
         Args:
-            data: Optional tensor of shape (window_size, n_features). Uses current_data if None.
-            states: Optional tensor of state assignments. Uses most recent states if None.
-            save_path: Path to save the visualization. If None, generates a default path.
+            data (np.ndarray or torch.Tensor, optional): Tensor of shape (window_size, n_features).
+                Uses current_data if None. Defaults to None.
+            states (np.ndarray or torch.Tensor, optional): Tensor of state assignments.
+                Uses most recent states if None. Defaults to None.
+            save_path (str, optional): Path to save the visualization. If None, generates a default path.
+                Defaults to None.
+        
+        Returns:
+            None
+        
+        This visualization combines:
+            1. Time series data with state coloring
+            2. State sequence visualization (similar to bnpy)
+            3. State pattern summaries
+            4. Transition probabilities between states
         """
         # Use current data if none provided
         if data is None and self.current_data is not None:
@@ -1092,15 +1140,21 @@ class LiveVisualizer:
         """
         Create visualizations showing time series data for each state separately.
         
-        This method:
-        1. Groups data points by state
-        2. For each state, shows the time series of all features
-        3. Highlights where each state appears in the full sequence
-        
         Args:
-            data: Optional tensor of shape (window_size, n_features). Uses current_data if None.
-            states: Optional tensor of state assignments. Uses most recent states if None.
-            save_path: Path to save the visualization. If None, generates a default path.
+            data (np.ndarray or torch.Tensor, optional): Tensor of shape (window_size, n_features).
+                Uses current_data if None. Defaults to None.
+            states (np.ndarray or torch.Tensor, optional): Tensor of state assignments.
+                Uses most recent states if None. Defaults to None.
+            save_path (str, optional): Path to save the visualization. If None, generates a default path.
+                Defaults to None.
+        
+        Returns:
+            None
+        
+        This method:
+            1. Groups data points by state
+            2. For each state, shows the time series of all features
+            3. Highlights where each state appears in the full sequence
         """
         # Use current data if none provided
         if data is None and self.current_data is not None:
@@ -1290,15 +1344,18 @@ class LiveVisualizer:
     
     def get_organized_plot_path(self, plot_type, filename):
         """
-        Organize plots into subdirectories based on their type,
-        while keeping the latest and final versions in the main plots directory.
+        Organize plots into subdirectories based on their type.
+        
+        This keeps the latest and final versions in the main plots directory.
         
         Args:
             plot_type (str): Type of plot (e.g., 'live_plot', 'state_evolution', etc.)
             filename (str): Original filename
             
         Returns:
-            str: Path to save the plot
+            list: List of tuples, where each tuple contains:
+                - Path to save the plot in the subdirectory
+                - Path to save the latest version (or None)
         """
         # Create subdirectory for this plot type if it doesn't exist
         subdir = f'plots/{plot_type}'
