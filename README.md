@@ -88,6 +88,23 @@ cd LatentDynamicsBayes
 pip install -r requirements.txt
 ```
 
+### Development Setup
+
+For development, install the additional dependencies included in the requirements.txt file:
+
+```bash
+# Install the development tools
+pip install flake8 autopep8
+
+# Run the code standardization script to enforce PEP 8
+python fix_pep8.py
+
+# Check for code style issues
+flake8
+```
+
+Refer to the [CODE_STANDARDS.md](CODE_STANDARDS.md) file for coding standards and the [CODE_STANDARDIZATION_PLAN.md](CODE_STANDARDIZATION_PLAN.md) for the standardization process.
+
 ## Usage Examples
 
 ### Basic Usage (Live Mode)

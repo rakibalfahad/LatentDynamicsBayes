@@ -5,3 +5,7 @@ seaborn>=0.11.0
 psutil>=5.7.0
 tqdm>=4.45.0
 scipy>=1.5.0
+
+# Development dependencies
+flake8>=5.0.0
+autopep8>=2.0.0
