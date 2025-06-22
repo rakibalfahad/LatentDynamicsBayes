@@ -9,7 +9,9 @@ The implementation is inspired by and builds upon the theoretical foundations of
 - **Bayesian non-parametric modeling** using HDP-HMM to automatically determine the number of states
 - **Dynamic state management** with birth, merge, and delete operations for adaptive model complexity
 - **PyTorch implementation** with GPU acceleration for faster training and inference
-- **Live data streaming** support with sliding window processing
+- **Dual-mode operation**:
+  - Live streaming data processing for real-time analysis
+  - Offline batch processing from CSV files for historical data analysis
 - **Incremental model updates** for continuous learning
 - **Comprehensive visualization suite**:
   - Time series data with state assignments
@@ -32,8 +34,14 @@ LatentDynamicsBayes/
 ├── hdp_hmm.py               # Core HDP-HMM implementation
 ├── live_train.py            # Live training module
 ├── live_data_collector.py   # Data collection for live streaming
+├── csv_processor.py         # Offline CSV data processing
+├── generate_sample_data.py  # Generate sample CSV data for testing
 ├── live_visualize.py        # Comprehensive visualization suite
 ├── demo.py                  # Quick demonstration script
+├── data/                    # Directory for CSV files (created by generate_sample_data.py)
+│   ├── sample_data_1.csv    # Sample CSV data file
+│   ├── sample_data_2.csv    # Sample CSV data file
+│   └── sample_data_3.csv    # Sample CSV data file
 ├── models/                  # Saved models directory
 │   ├── hdp_hmm.pth          # Trained model
 │   └── hdp_hmm_checkpoint.pth # Training checkpoint
@@ -80,6 +88,23 @@ cd LatentDynamicsBayes
 pip install -r requirements.txt
 ```
 
+### Development Setup
+
+For development, install the additional dependencies included in the requirements.txt file:
+
+```bash
+# Install the development tools
+pip install flake8 autopep8
+
+# Run the code standardization script to enforce PEP 8
+python fix_pep8.py
+
+# Check for code style issues
+flake8
+```
+
+Refer to the [CODE_STANDARDS.md](CODE_STANDARDS.md) file for coding standards and the [CODE_STANDARDIZATION_PLAN.md](CODE_STANDARDIZATION_PLAN.md) for the standardization process.
+
 ## Usage Examples
 
 ### Basic Usage (Live Mode)
@@ -95,10 +120,26 @@ python main.py
 Process data from CSV files stored in a directory:
 
 ```bash
-python main.py --data-dir data --window-size 50 --n-features 3
+python main.py --data-dir data --window-size 50 --stride 25 --n-features 3
 ```
 
 Each CSV file should have columns representing features and rows representing time steps. The files will be processed in alphabetical order. Multiple CSV files can be used and will be processed sequentially.
+
+Parameters for offline processing:
+- `--data-dir`: Directory containing CSV files (required for offline mode)
+- `--window-size`: Size of the sliding window in time steps
+- `--stride`: Number of time steps to advance between windows (defaults to window_size)
+- `--n-features`: Number of features in the data (automatically detected from CSV files)
+
+#### Generating Sample Data
+
+To generate sample CSV files for testing the offline mode:
+
+```bash
+python generate_sample_data.py
+```
+
+This will create CSV files in the `data/` directory with synthetic time series data that contains known state patterns.
 
 ### Quick Demo
 
@@ -144,6 +185,34 @@ The following command-line arguments are available:
 --window-size N    Size of sliding window (default: 100)
 --stride N         Stride for sliding window in offline mode (default: window_size)
 --n-features N     Number of features in the data (default: 3)
+```
+
+#### Offline Mode Parameters
+
+When running in offline mode (with `--data-dir`), the following parameters control the CSV processing:
+
+- `--data-dir`: Path to directory containing CSV files. Setting this parameter enables offline mode.
+- `--window-size`: Number of time steps to include in each processing window.
+- `--stride`: Number of time steps to advance between consecutive windows:
+  - When `stride = window_size`: Windows are non-overlapping
+  - When `stride < window_size`: Windows overlap by (window_size - stride) time steps
+  - When `stride > window_size`: Some time steps are skipped between windows
+- `--n-features`: Number of features in the data. In offline mode, this is automatically detected from the CSV files.
+
+#### CSV File Format
+
+Each CSV file should have the following format:
+- Each column represents a feature
+- Each row represents a time step
+- No header row is required (first row is treated as data)
+- Files are processed in alphabetical order
+
+Example CSV content:
+```
+0.5,1.2,0.8
+0.6,1.3,0.7
+0.7,1.4,0.6
+...
 ```
 
 Install the required packages:
@@ -621,6 +690,45 @@ In headless mode:
 - Special error handling ensures failed visualizations don't crash the program
 
 This makes the system ideal for long-running experiments on remote servers where you can periodically check the generated plots for analysis.
+
+## Live vs. Offline Mode
+
+The system supports two modes of operation, each with its own advantages:
+
+### Live Mode
+
+- **Data Source**: Real-time streams or simulated data
+- **Processing Style**: Continuous, incremental updates
+- **Use Cases**: 
+  - Real-time monitoring of systems
+  - Online learning from streaming data
+  - Continuous adaptation to changing dynamics
+- **Command**: `python main.py`
+
+### Offline Mode (CSV Processing)
+
+- **Data Source**: CSV files in a specified directory
+- **Processing Style**: Batch processing of historical data
+- **Use Cases**:
+  - Analysis of previously collected datasets
+  - Model development and testing
+  - Benchmark comparisons
+  - Parameter tuning
+- **Command**: `python main.py --data-dir data --window-size 50 --stride 25`
+
+### Comparison
+
+| Aspect | Live Mode | Offline Mode |
+|--------|-----------|--------------|
+| Data Source | Real-time streams or simulated data | CSV files in a directory |
+| Processing Speed | Limited by data collection rate | As fast as the processor can handle |
+| Window Management | Fixed window size | Configurable window size and stride |
+| Feature Detection | Fixed number of features | Automatically detected from CSV files |
+| End Condition | Manual stop or max windows | End of all CSV files or max windows |
+| Applicable Use Cases | Real-time monitoring, online learning | Historical analysis, model development |
+| Visualization | Real-time updates | Generated at intervals and end of processing |
+
+Both modes produce the same outputs (model files, visualizations, etc.) and use the same underlying HDP-HMM algorithm. The choice between modes depends on your specific use case and data availability.
 
 ## Contributing
 

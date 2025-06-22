@@ -39,40 +39,6 @@ class HDPHMM(BaseHDPHMM):
         Returns:
             tuple: (int: New number of states, dict: State change information)
         """
-        # Call the base implementation
-        result = super().update_states(observations)
-        
-        # For backward compatibility, update current_states
-        self.current_states = self.n_active_states
-        
-        return result
-        
-        viterbi = torch.zeros(T, self.current_states, device=self.device)
-        ptr = torch.zeros(T, self.current_states, dtype=torch.long, device=self.device)
-        viterbi[0] = torch.log(beta_weights[:self.current_states] + 1e-10) + emission_probs[0]
-        
-        for t in range(1, T):
-            trans = viterbi[t-1].unsqueeze(1) + torch.log(trans_probs[:self.current_states, :self.current_states] + 1e-10)
-            viterbi[t], ptr[t] = torch.max(trans, dim=0)
-            viterbi[t] = viterbi[t] + emission_probs[t]
-        
-        states = torch.zeros(T, dtype=torch.long, device=self.device)
-        states[-1] = torch.argmax(viterbi[-1])
-        for t in range(T-2, -1, -1):
-            states[t] = ptr[t+1, states[t+1]]
-        
-        return states, trans_probs[:self.current_states, :self.current_states]
-    
-    def update_states(self, observations):
-        """
-        Dynamically adjust the number of states with birth, merge, and delete mechanisms.
-        
-        Args:
-            observations: Tensor of shape (seq_length, n_features)
-            
-        Returns:
-            tuple: (int: New number of states, dict: State change information)
-        """
         # Initialize state change tracking dict
         state_changes = {
             'deleted': [],
